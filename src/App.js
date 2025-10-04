@@ -1,24 +1,227 @@
-import logo from './logo.svg';
-import './App.css';
+// App.jsx
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+
+// Import your Login component
+import Login from './components/Login';
+import PrivateRoute from './components/PrivateRoute';
+import Layout from './components/Layout';
+
+// Import Admin Components
+import AdminDashboard from './components/pages/Admin/Dashboard';
+import AdminEmployees from './components/pages/Admin/Employees';
+import AdminProjects from './components/pages/Admin/Project';
+import AdminRequests from './components/pages/Admin/Request';
+
+// Import Manager Components
+import ManagerDashboard from './components/pages/Manager/Dashboard';
+import ManagerProjects from './components/pages/Manager/ManagerProjects';
+import ManagerTeam from './components/pages/Manager/ManagerTeam';
+import ManagerRequests from './components/pages/Manager/ManagerRequests';
+
+// Import Employee Components
+import EmployeeDashboard from './components/pages/Employee/Dashboard';
+import EmployeeProjects from './components/pages/Employee/EmployeeProjects';
+import EmployeeRequests from './components/pages/Employee/EmployeeRequests';
+
+const theme = createTheme({
+  palette: {
+    primary: {
+      main: '#1976d2',
+    },
+    secondary: {
+      main: '#dc004e',
+    },
+  },
+});
 
 function App() {
+  // Shared state for all components
+  const [employees, setEmployees] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [requests, setRequests] = useState([]);
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Router>
+        <Routes>
+          {/* Public Route */}
+          <Route path="/" element={<Login />} />
+
+          {/* Admin Routes */}
+          <Route
+            path="/admin-dashboard"
+            element={
+              <PrivateRoute role="ADMIN">
+                <Layout>
+                  <AdminDashboard 
+                    employees={employees} 
+                    projects={projects} 
+                    requests={requests} 
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin-employees"
+            element={
+              <PrivateRoute role="ADMIN">
+                <Layout>
+                  <AdminEmployees 
+                    employees={employees} 
+                    setEmployees={setEmployees} 
+                    projects={projects} 
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin-projects"
+            element={
+              <PrivateRoute role="ADMIN">
+                <Layout>
+                  <AdminProjects 
+                    projects={projects} 
+                    setProjects={setProjects} 
+                    employees={employees}
+                    setEmployees={setEmployees}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin-requests"
+            element={
+              <PrivateRoute role="ADMIN">
+                <Layout>
+                  <AdminRequests 
+                    requests={requests} 
+                    setRequests={setRequests} 
+                    employees={employees}
+                    projects={projects}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+
+          {/* Manager Routes */}
+          <Route
+            path="/manager-dashboard"
+            element={
+              <PrivateRoute role="manager">
+                <Layout>
+                  <ManagerDashboard 
+                    managerId={parseInt(localStorage.getItem('userId'))}
+                    projects={projects} 
+                    employees={employees}
+                    requests={requests}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/manager-projects"
+            element={
+              <PrivateRoute role="manager">
+                <Layout>
+                  <ManagerProjects 
+                    managerId={parseInt(localStorage.getItem('userId'))}
+                    projects={projects} 
+                    employees={employees}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/manager-team"
+            element={
+              <PrivateRoute role="manager">
+                <Layout>
+                  <ManagerTeam 
+                    managerId={parseInt(localStorage.getItem('userId'))}
+                    projects={projects} 
+                    employees={employees}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/manager-requests"
+            element={
+              <PrivateRoute role="manager">
+                <Layout>
+                  <ManagerRequests 
+                    managerId={parseInt(localStorage.getItem('userId'))}
+                    requests={requests}
+                    setRequests={setRequests}
+                    employees={employees}
+                    projects={projects}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+
+          {/* Employee Routes */}
+          <Route
+            path="/employee-dashboard"
+            element={
+              <PrivateRoute role="employee">
+                <Layout>
+                  <EmployeeDashboard 
+                    employeeId={parseInt(localStorage.getItem('userId'))}
+                    projects={projects} 
+                    requests={requests}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/employee-projects"
+            element={
+              <PrivateRoute role="employee">
+                <Layout>
+                  <EmployeeProjects 
+                    employeeId={parseInt(localStorage.getItem('userId'))}
+                    projects={projects} 
+                    employees={employees}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/employee-requests"
+            element={
+              <PrivateRoute role="employee">
+                <Layout>
+                  <EmployeeRequests 
+                    employeeId={parseInt(localStorage.getItem('userId'))}
+                    requests={requests}
+                    setRequests={setRequests}
+                    projects={projects}
+                  />
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 
