@@ -1,5 +1,4 @@
-// pages/admin/Projects.jsx - Updated Version
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -20,7 +19,6 @@ import {
   MenuItem,
   Checkbox,
   FormControlLabel,
-  LinearProgress,
   Alert,
   IconButton,
   Table,
@@ -32,7 +30,10 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemAvatar
+  ListItemAvatar,
+  Tabs,
+  Tab,
+  Tooltip
 } from '@mui/material';
 import {
   Add,
@@ -42,41 +43,187 @@ import {
   Group,
   Close,
   Visibility,
-  Assignment
+  Assignment,
+  Edit,
+  PersonAdd,
+  CheckCircle,
+  AccessTime,
+  Warning
 } from '@mui/icons-material';
 
-const Projects = ({ projects, setProjects, employees, setEmployees }) => {
+import { getProjects, createProject, updateProject, getEmployees } from '../../../api/api';
+
+const Projects = () => {
+  const [projects, setProjects] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [detailsTab, setDetailsTab] = useState(0);
   const [projectForm, setProjectForm] = useState({
     name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
   });
+  const [newMembers, setNewMembers] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [error, setError] = useState(null);
 
-  const handleProjectSubmit = (e) => {
-    e.preventDefault();
-    const newProject = { 
-      id: Date.now(), 
-      ...projectForm, 
-      progress: 0,
-      teams: [],
-      tasks: []
-    };
-    setProjects([...projects, newProject]);
-    const updatedEmployees = employees.map(emp => {
-      if (projectForm.teamMembers.includes(emp.id) || emp.id === parseInt(projectForm.managerId)) {
-        return { ...emp, projects: [...(emp.projects || []), newProject.id] };
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await getProjects();
+        setProjects(res.data || []);
+      } catch (e) {
+        setError('Failed to load projects');
+        console.error(e);
+      } finally {
+        setLoadingProjects(false);
       }
-      return emp;
+    };
+
+    const fetchEmployees = async () => {
+      try {
+        const res = await getEmployees();
+        setEmployees(res.data || []);
+      } catch (e) {
+        setError('Failed to load employees');
+        console.error(e);
+      } finally {
+        setLoadingEmployees(false);
+      }
+    };
+
+    fetchProjects();
+    fetchEmployees();
+  }, []);
+
+  // Calculate timeline status
+  const getTimelineStatus = (startDate, endDate, status) => {
+    const today = new Date();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (status === 'Completed') {
+      return { label: 'Completed', color: 'success', icon: <CheckCircle /> };
+    }
+    
+    if (today > end) {
+      return { label: 'Overdue', color: 'error', icon: <Warning /> };
+    }
+    
+    if (today < start) {
+      return { label: 'Not Started', color: 'default', icon: <AccessTime /> };
+    }
+    
+    const totalDuration = end - start;
+    const elapsed = today - start;
+    const percentElapsed = (elapsed / totalDuration) * 100;
+    
+    if (percentElapsed < 50) {
+      return { label: 'On Track', color: 'success', icon: <CheckCircle /> };
+    } else if (percentElapsed < 80) {
+      return { label: 'In Progress', color: 'info', icon: <AccessTime /> };
+    } else {
+      return { label: 'Near Deadline', color: 'warning', icon: <Warning /> };
+    }
+  };
+
+  const handleProjectSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const newProject = {
+        ...projectForm,
+        teams: [],
+        tasks: []
+      };
+      const res = await createProject(newProject);
+      setProjects(prev => [...prev, res.data]);
+      setProjectForm({
+        name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
+      });
+      setShowProjectModal(false);
+    } catch (e) {
+      setError('Failed to create project');
+      console.error(e);
+    }
+  };
+
+  const handleEditProject = (project) => {
+    setSelectedProject(project);
+    setProjectForm({
+      name: project.name,
+      description: project.description,
+      startDate: project.startDate,
+      endDate: project.endDate,
+      managerId: project.managerId,
+      teamMembers: project.teamMembers,
+      status: project.status
     });
-    setEmployees(updatedEmployees);
-    setProjectForm({ name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning' });
-    setShowProjectModal(false);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateProject = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedProject = {
+        ...selectedProject,
+        ...projectForm
+      };
+      const res = await updateProject(selectedProject.id, updatedProject);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
+      setShowEditModal(false);
+      setSelectedProject(null);
+      setProjectForm({
+        name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
+      });
+    } catch (e) {
+      setError('Failed to update project');
+      console.error(e);
+    }
+  };
+
+  const handleAddMembers = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedProject = {
+        ...selectedProject,
+        teamMembers: [...new Set([...selectedProject.teamMembers, ...newMembers])]
+      };
+      const res = await updateProject(selectedProject.id, updatedProject);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
+      setSelectedProject(res.data);
+      setNewMembers([]);
+      setShowAddMemberModal(false);
+    } catch (e) {
+      setError('Failed to add members');
+      console.error(e);
+    }
+  };
+
+  const handleMarkComplete = async (projectId) => {
+    try {
+      const project = projects.find(p => p.id === projectId);
+      const updatedProject = {
+        ...project,
+        status: 'Completed'
+      };
+      const res = await updateProject(projectId, updatedProject);
+      setProjects(prev => prev.map(p => p.id === projectId ? res.data : p));
+      if (selectedProject?.id === projectId) {
+        setSelectedProject(res.data);
+      }
+    } catch (e) {
+      setError('Failed to mark project as complete');
+      console.error(e);
+    }
   };
 
   const viewProjectDetails = (project) => {
     setSelectedProject(project);
     setShowDetailsModal(true);
+    setDetailsTab(0);
   };
 
   const getProjectManager = (project) => {
@@ -84,7 +231,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
   };
 
   const getTeamMembers = (project) => {
-    return employees.filter(emp => project.teamMembers.includes(emp.id));
+    return employees.filter(emp => project.teamMembers?.includes(emp.id));
   };
 
   const getStatusColor = (status) => {
@@ -95,6 +242,22 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
       default: return 'default';
     }
   };
+
+  const getAvailableEmployees = () => {
+    if (!selectedProject) return [];
+    return employees.filter(e => 
+      e.role === 'employee' && 
+      !selectedProject.teamMembers?.includes(e.id)
+    );
+  };
+
+  if (loadingProjects || loadingEmployees) {
+    return <Typography variant="h6" textAlign="center" mt={5}>Loading data...</Typography>;
+  }
+
+  if (error) {
+    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+  }
 
   return (
     <Box>
@@ -118,10 +281,10 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
       </Box>
 
       {projects.length === 0 ? (
-        <Paper 
+        <Paper
           elevation={0}
-          sx={{ 
-            p: 8, 
+          sx={{
+            p: 8,
             textAlign: 'center',
             border: '2px dashed',
             borderColor: 'divider',
@@ -147,11 +310,15 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
         <Grid container spacing={3}>
           {projects.map(proj => {
             const manager = getProjectManager(proj);
+            const timelineStatus = getTimelineStatus(proj.startDate, proj.endDate, proj.status);
+            const completedTasks = proj.tasks?.filter(t => t.status === 'Done').length || 0;
+            const totalTasks = proj.tasks?.length || 0;
+            
             return (
               <Grid item xs={12} md={6} lg={4} key={proj.id}>
-                <Card 
+                <Card
                   elevation={0}
-                  sx={{ 
+                  sx={{
                     height: '100%',
                     border: '1px solid',
                     borderColor: 'divider',
@@ -168,20 +335,30 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                       <Avatar sx={{ bgcolor: 'primary.main' }}>
                         <FolderOpen />
                       </Avatar>
-                      <Chip 
-                        label={proj.status}
-                        size="small"
-                        color={getStatusColor(proj.status)}
-                      />
+                      <Stack direction="row" spacing={1}>
+                        <Chip
+                          label={proj.status}
+                          size="small"
+                          color={getStatusColor(proj.status)}
+                        />
+                        <Tooltip title={`Timeline: ${timelineStatus.label}`}>
+                          <Chip
+                            icon={timelineStatus.icon}
+                            label={timelineStatus.label}
+                            size="small"
+                            color={timelineStatus.color}
+                          />
+                        </Tooltip>
+                      </Stack>
                     </Box>
-                    
+
                     <Typography variant="h6" fontWeight="600" gutterBottom noWrap>
                       {proj.name}
                     </Typography>
-                    
-                    <Typography 
-                      variant="body2" 
-                      color="text.secondary" 
+
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
                       mb={2}
                       sx={{
                         overflow: 'hidden',
@@ -204,18 +381,19 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                           Manager: <strong>{manager ? manager.name : 'N/A'}</strong>
                         </Typography>
                       </Box>
-                      
+
                       <Box display="flex" alignItems="center" gap={1}>
                         <Group sx={{ fontSize: 18, color: 'text.secondary' }} />
                         <Typography variant="body2" color="text.secondary">
-                          Team: <strong>{proj.teamMembers.length + 1} members</strong>
+                          Team: <strong>{(proj.teamMembers?.length || 0) + 1} members</strong>
                         </Typography>
                       </Box>
 
                       <Box display="flex" alignItems="center" gap={1}>
                         <Assignment sx={{ fontSize: 18, color: 'text.secondary' }} />
                         <Typography variant="body2" color="text.secondary">
-                          Teams: <strong>{proj.teams?.length || 0}</strong> | Tasks: <strong>{proj.tasks?.length || 0}</strong>
+                          Tasks: <strong>{completedTasks}/{totalTasks}</strong>
+                          {totalTasks > 0 && ` (${Math.round((completedTasks/totalTasks)*100)}%)`}
                         </Typography>
                       </Box>
 
@@ -227,31 +405,40 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                       </Box>
                     </Stack>
 
-                    <Box mt={2}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="caption" color="text.secondary">
-                          Progress
-                        </Typography>
-                        <Typography variant="caption" fontWeight="600">
-                          {proj.progress}%
-                        </Typography>
-                      </Box>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={proj.progress}
-                        sx={{ height: 8, borderRadius: 4 }}
-                      />
-                    </Box>
-
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      startIcon={<Visibility />}
-                      onClick={() => viewProjectDetails(proj)}
-                      sx={{ mt: 2 }}
-                    >
-                      View Details
-                    </Button>
+                    <Stack direction="row" spacing={1} mt={2}>
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        startIcon={<Visibility />}
+                        onClick={() => viewProjectDetails(proj)}
+                        size="small"
+                      >
+                        View
+                      </Button>
+                      <Tooltip title="Edit Project">
+                        <IconButton
+                          color="primary"
+                          onClick={() => handleEditProject(proj)}
+                          size="small"
+                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Add Members">
+                        <IconButton
+                          color="success"
+                          onClick={() => {
+                            setSelectedProject(proj);
+                            setShowAddMemberModal(true);
+                          }}
+                          size="small"
+                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                        >
+                          <PersonAdd fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </CardContent>
                 </Card>
               </Grid>
@@ -261,8 +448,8 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
       )}
 
       {/* Create Project Modal */}
-      <Dialog 
-        open={showProjectModal} 
+      <Dialog
+        open={showProjectModal}
         onClose={() => setShowProjectModal(false)}
         maxWidth="md"
         fullWidth
@@ -286,7 +473,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   fullWidth
                   label="Project Name"
                   value={projectForm.name}
-                  onChange={(e) => setProjectForm({...projectForm, name: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
                   required
                   placeholder="Enter project name"
                 />
@@ -297,7 +484,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   select
                   label="Status"
                   value={projectForm.status}
-                  onChange={(e) => setProjectForm({...projectForm, status: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, status: e.target.value })}
                   required
                 >
                   <MenuItem value="Planning">Planning</MenuItem>
@@ -312,7 +499,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   rows={3}
                   label="Description"
                   value={projectForm.description}
-                  onChange={(e) => setProjectForm({...projectForm, description: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
                   required
                   placeholder="Describe the project objectives and scope"
                 />
@@ -323,7 +510,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   type="date"
                   label="Start Date"
                   value={projectForm.startDate}
-                  onChange={(e) => setProjectForm({...projectForm, startDate: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, startDate: e.target.value })}
                   required
                   InputLabelProps={{ shrink: true }}
                 />
@@ -334,7 +521,7 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   type="date"
                   label="End Date"
                   value={projectForm.endDate}
-                  onChange={(e) => setProjectForm({...projectForm, endDate: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, endDate: e.target.value })}
                   required
                   InputLabelProps={{ shrink: true }}
                 />
@@ -345,17 +532,17 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   select
                   label="Assign Manager"
                   value={projectForm.managerId}
-                  onChange={(e) => setProjectForm({...projectForm, managerId: e.target.value})}
+                  onChange={(e) => setProjectForm({ ...projectForm, managerId: e.target.value })}
                   required
                 >
                   <MenuItem value="">Select Manager</MenuItem>
-                  {employees.filter(e => e.role === 'Manager').map(manager => (
+                  {employees.filter(e => e.role === 'manager').map(manager => (
                     <MenuItem key={manager.id} value={manager.id}>
                       {manager.name} - {manager.designation}
                     </MenuItem>
                   ))}
                 </TextField>
-                {employees.filter(e => e.role === 'Manager').length === 0 && (
+                {employees.filter(e => e.role === 'manager').length === 0 && (
                   <Alert severity="warning" sx={{ mt: 1 }}>
                     No managers available. Please add managers first.
                   </Alert>
@@ -365,21 +552,21 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                 <Typography variant="subtitle2" gutterBottom>
                   Select Team Members
                 </Typography>
-                <Paper 
-                  variant="outlined" 
-                  sx={{ 
-                    maxHeight: 250, 
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    maxHeight: 250,
                     overflowY: 'auto',
                     p: 2
                   }}
                 >
-                  {employees.filter(e => e.role === 'Employee').length === 0 ? (
+                  {employees.filter(e => e.role === 'employee').length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
                       No employees available to add to team
                     </Typography>
                   ) : (
                     <Grid container spacing={1}>
-                      {employees.filter(e => e.role === 'Employee').map(emp => (
+                      {employees.filter(e => e.role === 'employee').map(emp => (
                         <Grid item xs={12} key={emp.id}>
                           <FormControlLabel
                             control={
@@ -427,8 +614,8 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
             <Button onClick={() => setShowProjectModal(false)}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               variant="contained"
               startIcon={<Add />}
             >
@@ -438,9 +625,277 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
         </form>
       </Dialog>
 
+      {/* Edit Project Modal */}
+      <Dialog
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <form onSubmit={handleUpdateProject}>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" fontWeight="600">
+                Edit Project
+              </Typography>
+              <IconButton onClick={() => setShowEditModal(false)}>
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <Divider />
+          <DialogContent>
+            <Grid container spacing={2} mt={0.5}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Project Name"
+                  value={projectForm.name}
+                  onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Status"
+                  value={projectForm.status}
+                  onChange={(e) => setProjectForm({ ...projectForm, status: e.target.value })}
+                  required
+                >
+                  <MenuItem value="Planning">Planning</MenuItem>
+                  <MenuItem value="In Progress">In Progress</MenuItem>
+                  <MenuItem value="Completed">Completed</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Description"
+                  value={projectForm.description}
+                  onChange={(e) => setProjectForm({ ...projectForm, description: e.target.value })}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Start Date"
+                  value={projectForm.startDate}
+                  onChange={(e) => setProjectForm({ ...projectForm, startDate: e.target.value })}
+                  required
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="End Date"
+                  value={projectForm.endDate}
+                  onChange={(e) => setProjectForm({ ...projectForm, endDate: e.target.value })}
+                  required
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  select
+                  label="Assign Manager"
+                  value={projectForm.managerId}
+                  onChange={(e) => setProjectForm({ ...projectForm, managerId: e.target.value })}
+                  required
+                >
+                  <MenuItem value="">Select Manager</MenuItem>
+                  {employees.filter(e => e.role === 'manager').map(manager => (
+                    <MenuItem key={manager.id} value={manager.id}>
+                      {manager.name} - {manager.designation}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Team Members
+                </Typography>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    maxHeight: 250,
+                    overflowY: 'auto',
+                    p: 2
+                  }}
+                >
+                  <Grid container spacing={1}>
+                    {employees.filter(e => e.role === 'employee').map(emp => (
+                      <Grid item xs={12} key={emp.id}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={projectForm.teamMembers?.includes(emp.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setProjectForm({
+                                    ...projectForm,
+                                    teamMembers: [...projectForm.teamMembers, emp.id]
+                                  });
+                                } else {
+                                  setProjectForm({
+                                    ...projectForm,
+                                    teamMembers: projectForm.teamMembers.filter(id => id !== emp.id)
+                                  });
+                                }
+                              }}
+                            />
+                          }
+                          label={
+                            <Box>
+                              <Typography variant="body2">
+                                {emp.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {emp.designation} • {emp.department}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+                <Typography variant="caption" color="text.secondary" mt={1} display="block">
+                  Selected: {projectForm.teamMembers?.length || 0} member(s)
+                </Typography>
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <Divider />
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setShowEditModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={<Edit />}
+            >
+              Update Project
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Add Members Modal */}
+      <Dialog
+        open={showAddMemberModal}
+        onClose={() => {
+          setShowAddMemberModal(false);
+          setNewMembers([]);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <form onSubmit={handleAddMembers}>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" fontWeight="600">
+                Add Team Members
+              </Typography>
+              <IconButton onClick={() => {
+                setShowAddMemberModal(false);
+                setNewMembers([]);
+              }}>
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <Divider />
+          <DialogContent>
+            {selectedProject && (
+              <>
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  Project: <strong>{selectedProject.name}</strong>
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  Current Team Size: <strong>{(selectedProject.teamMembers?.length || 0) + 1}</strong> members
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                {getAvailableEmployees().length === 0 ? (
+                  <Alert severity="info">
+                    All employees are already assigned to this project
+                  </Alert>
+                ) : (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      maxHeight: 300,
+                      overflowY: 'auto',
+                      p: 2
+                    }}
+                  >
+                    {getAvailableEmployees().map(emp => (
+                      <FormControlLabel
+                        key={emp.id}
+                        control={
+                          <Checkbox
+                            checked={newMembers.includes(emp.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewMembers([...newMembers, emp.id]);
+                              } else {
+                                setNewMembers(newMembers.filter(id => id !== emp.id));
+                              }
+                            }}
+                          />
+                        }
+                        label={
+                          <Box>
+                            <Typography variant="body2">
+                              {emp.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {emp.designation} • {emp.department}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    ))}
+                  </Paper>
+                )}
+                <Typography variant="caption" color="text.secondary" mt={1} display="block">
+                  Selected: {newMembers.length} new member(s)
+                </Typography>
+              </>
+            )}
+          </DialogContent>
+          <Divider />
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => {
+              setShowAddMemberModal(false);
+              setNewMembers([]);
+            }}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={<PersonAdd />}
+              disabled={newMembers.length === 0}
+            >
+              Add Members
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
       {/* View Project Details Modal */}
-      <Dialog 
-        open={showDetailsModal} 
+      <Dialog
+        open={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
         maxWidth="lg"
         fullWidth
@@ -453,66 +908,163 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                   <Typography variant="h6" fontWeight="600">
                     {selectedProject.name}
                   </Typography>
-                  <Chip 
-                    label={selectedProject.status}
-                    size="small"
-                    color={getStatusColor(selectedProject.status)}
-                    sx={{ mt: 1 }}
-                  />
+                  <Stack direction="row" spacing={1} mt={1}>
+                    <Chip
+                      label={selectedProject.status}
+                      size="small"
+                      color={getStatusColor(selectedProject.status)}
+                    />
+                    <Chip
+                      icon={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).icon}
+                      label={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).label}
+                      size="small"
+                      color={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).color}
+                    />
+                  </Stack>
                 </Box>
-                <IconButton onClick={() => setShowDetailsModal(false)}>
-                  <Close />
-                </IconButton>
+                <Stack direction="row" spacing={1}>
+                  {selectedProject.status !== 'Completed' && (
+                    <Button
+                      variant="contained"
+                      color="success"
+                      startIcon={<CheckCircle />}
+                      onClick={() => handleMarkComplete(selectedProject.id)}
+                      size="small"
+                    >
+                      Mark Complete
+                    </Button>
+                  )}
+                  <IconButton onClick={() => setShowDetailsModal(false)}>
+                    <Close />
+                  </IconButton>
+                </Stack>
               </Box>
             </DialogTitle>
             <Divider />
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs value={detailsTab} onChange={(e, newValue) => setDetailsTab(newValue)}>
+                <Tab label="Overview" />
+                <Tab label={`Team (${(getTeamMembers(selectedProject).length || 0) + 1})`} />
+                <Tab label={`Teams (${selectedProject.teams?.length || 0})`} />
+                <Tab label={`Tasks (${selectedProject.tasks?.length || 0})`} />
+              </Tabs>
+            </Box>
             <DialogContent>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" fontWeight="600" gutterBottom>
-                      Project Information
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <Typography variant="body2" color="text.secondary" paragraph>
-                      {selectedProject.description}
-                    </Typography>
-                    <Stack spacing={1}>
-                      <Typography variant="body2">
-                        <strong>Start Date:</strong> {selectedProject.startDate}
+              {/* Overview Tab */}
+              {detailsTab === 0 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight="600" gutterBottom>
+                        Project Information
                       </Typography>
-                      <Typography variant="body2">
-                        <strong>End Date:</strong> {selectedProject.endDate}
+                      <Divider sx={{ mb: 2 }} />
+                      <Typography variant="body2" color="text.secondary" paragraph>
+                        {selectedProject.description}
                       </Typography>
-                      <Typography variant="body2">
-                        <strong>Manager:</strong> {getProjectManager(selectedProject)?.name || 'N/A'}
-                      </Typography>
-                      <Box>
-                        <Typography variant="body2" gutterBottom>
-                          <strong>Progress:</strong>
+                      <Stack spacing={1}>
+                        <Typography variant="body2">
+                          <strong>Start Date:</strong> {selectedProject.startDate}
                         </Typography>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={selectedProject.progress}
-                          sx={{ height: 10, borderRadius: 5 }}
-                        />
-                        <Typography variant="caption" color="text.secondary">
-                          {selectedProject.progress}% Complete
+                        <Typography variant="body2">
+                          <strong>End Date:</strong> {selectedProject.endDate}
                         </Typography>
-                      </Box>
-                    </Stack>
-                  </Paper>
-                </Grid>
+                        <Typography variant="body2">
+                          <strong>Manager:</strong> {getProjectManager(selectedProject)?.name || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Timeline Status:</strong>{' '}
+                          <Chip
+                            size="small"
+                            label={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).label}
+                            color={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).color}
+                          />
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  </Grid>
 
-                <Grid item xs={12} md={6}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" fontWeight="600" gutterBottom>
-                      Team Members ({getTeamMembers(selectedProject).length + 1})
+                  <Grid item xs={12} md={6}>
+                    <Paper variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1" fontWeight="600" gutterBottom>
+                        Quick Stats
+                      </Typography>
+                      <Divider sx={{ mb: 2 }} />
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Card variant="outlined">
+                            <CardContent>
+                              <Typography variant="h4" fontWeight="700" color="primary.main">
+                                {(selectedProject.teamMembers?.length || 0) + 1}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Team Members
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Card variant="outlined">
+                            <CardContent>
+                              <Typography variant="h4" fontWeight="700" color="info.main">
+                                {selectedProject.teams?.length || 0}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Teams Created
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Card variant="outlined">
+                            <CardContent>
+                              <Typography variant="h4" fontWeight="700" color="success.main">
+                                {selectedProject.tasks?.filter(t => t.status === 'Done').length || 0}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Tasks Done
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Card variant="outlined">
+                            <CardContent>
+                              <Typography variant="h4" fontWeight="700" color="warning.main">
+                                {selectedProject.tasks?.length || 0}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Total Tasks
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              )}
+
+              {/* Team Members Tab */}
+              {detailsTab === 1 && (
+                <Box>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h6" fontWeight="600">
+                      All Team Members
                     </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <List dense>
-                      {/* Manager */}
-                      {getProjectManager(selectedProject) && (
+                    <Button
+                      variant="contained"
+                      startIcon={<PersonAdd />}
+                      onClick={() => setShowAddMemberModal(true)}
+                      size="small"
+                    >
+                      Add Members
+                    </Button>
+                  </Box>
+                  <List>
+                    {/* Manager */}
+                    {getProjectManager(selectedProject) && (
+                      <>
                         <ListItem>
                           <ListItemAvatar>
                             <Avatar sx={{ bgcolor: 'warning.main' }}>
@@ -524,15 +1076,18 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                             secondary={
                               <>
                                 <Chip label="Manager" size="small" color="warning" sx={{ mr: 1 }} />
-                                {getProjectManager(selectedProject).designation}
+                                {getProjectManager(selectedProject).designation} • {getProjectManager(selectedProject).department}
                               </>
                             }
                           />
                         </ListItem>
-                      )}
-                      {/* Team Members */}
-                      {getTeamMembers(selectedProject).map(emp => (
-                        <ListItem key={emp.id}>
+                        <Divider />
+                      </>
+                    )}
+                    {/* Team Members */}
+                    {getTeamMembers(selectedProject).map(emp => (
+                      <React.Fragment key={emp.id}>
+                        <ListItem>
                           <ListItemAvatar>
                             <Avatar sx={{ bgcolor: 'primary.main' }}>
                               {emp.name.charAt(0)}
@@ -543,73 +1098,170 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                             secondary={`${emp.designation} • ${emp.department}`}
                           />
                         </ListItem>
+                        <Divider />
+                      </React.Fragment>
+                    ))}
+                  </List>
+                </Box>
+              )}
+
+              {/* Teams Created Tab */}
+              {detailsTab === 2 && (
+                <Box>
+                  <Typography variant="h6" fontWeight="600" gutterBottom>
+                    Teams Created by Manager
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  {(!selectedProject.teams || selectedProject.teams.length === 0) ? (
+                    <Alert severity="info">
+                      No teams created yet. Manager can create teams for this project.
+                    </Alert>
+                  ) : (
+                    <Grid container spacing={2}>
+                      {selectedProject.teams.map(team => (
+                        <Grid item xs={12} sm={6} md={4} key={team.id}>
+                          <Card variant="outlined">
+                            <CardContent>
+                              <Typography variant="h6" fontWeight="600" gutterBottom>
+                                {team.name}
+                              </Typography>
+                              <Divider sx={{ my: 1 }} />
+                              <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                                Created: {team.createdAt}
+                              </Typography>
+                              <Typography variant="body2" fontWeight="600" gutterBottom>
+                                Members ({team.members?.length || 0}):
+                              </Typography>
+                              <List dense>
+                                {team.members?.map(memberId => {
+                                  const member = employees.find(e => e.id === memberId);
+                                  return member ? (
+                                    <ListItem key={memberId} sx={{ px: 0 }}>
+                                      <ListItemAvatar>
+                                        <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                                          {member.name.charAt(0)}
+                                        </Avatar>
+                                      </ListItemAvatar>
+                                      <ListItemText
+                                        primary={<Typography variant="body2">{member.name}</Typography>}
+                                        secondary={<Typography variant="caption">{member.designation}</Typography>}
+                                      />
+                                    </ListItem>
+                                  ) : null;
+                                })}
+                              </List>
+                            </CardContent>
+                          </Card>
+                        </Grid>
                       ))}
-                    </List>
-                  </Paper>
-                </Grid>
+                    </Grid>
+                  )}
+                </Box>
+              )}
 
-                <Grid item xs={12}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" fontWeight="600" gutterBottom>
-                      Teams Created by Manager ({selectedProject.teams?.length || 0})
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    {(!selectedProject.teams || selectedProject.teams.length === 0) ? (
-                      <Alert severity="info">
-                        No teams created yet. Manager can create teams for this project.
-                      </Alert>
-                    ) : (
-                      <Grid container spacing={2}>
-                        {selectedProject.teams.map(team => (
-                          <Grid item xs={12} sm={6} md={4} key={team.id}>
-                            <Card variant="outlined">
-                              <CardContent>
-                                <Typography variant="subtitle2" fontWeight="600">
-                                  {team.name}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {team.members.length} members
-                                </Typography>
-                              </CardContent>
-                            </Card>
-                          </Grid>
-                        ))}
-                      </Grid>
-                    )}
-                  </Paper>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Paper variant="outlined" sx={{ p: 2 }}>
-                    <Typography variant="subtitle1" fontWeight="600" gutterBottom>
-                      Tasks ({selectedProject.tasks?.length || 0})
-                    </Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    {(!selectedProject.tasks || selectedProject.tasks.length === 0) ? (
-                      <Alert severity="info">
-                        No tasks assigned yet. Manager can assign tasks to team members.
-                      </Alert>
-                    ) : (
-                      <TableContainer>
-                        <Table size="small">
+              {/* Tasks Tab */}
+              {detailsTab === 3 && (
+                <Box>
+                  <Typography variant="h6" fontWeight="600" gutterBottom>
+                    Project Tasks
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  {(!selectedProject.tasks || selectedProject.tasks.length === 0) ? (
+                    <Alert severity="info">
+                      No tasks assigned yet. Manager can assign tasks to team members.
+                    </Alert>
+                  ) : (
+                    <>
+                      <Box mb={2}>
+                        <Stack direction="row" spacing={2}>
+                          <Chip
+                            label={`Total: ${selectedProject.tasks.length}`}
+                            color="default"
+                          />
+                          <Chip
+                            label={`Done: ${selectedProject.tasks.filter(t => t.status === 'Done').length}`}
+                            color="success"
+                          />
+                          <Chip
+                            label={`In Progress: ${selectedProject.tasks.filter(t => t.status === 'In Progress').length}`}
+                            color="info"
+                          />
+                          <Chip
+                            label={`To Do: ${selectedProject.tasks.filter(t => t.status === 'To Do').length}`}
+                            color="warning"
+                          />
+                        </Stack>
+                      </Box>
+                      <TableContainer component={Paper} variant="outlined">
+                        <Table>
                           <TableHead>
-                            <TableRow>
-                              <TableCell>Task</TableCell>
-                              <TableCell>Assigned To</TableCell>
-                              <TableCell>Deadline</TableCell>
-                              <TableCell>Status</TableCell>
+                            <TableRow sx={{ bgcolor: 'grey.50' }}>
+                              <TableCell><strong>Task Name</strong></TableCell>
+                              <TableCell><strong>Assigned To</strong></TableCell>
+                              <TableCell><strong>Team</strong></TableCell>
+                              <TableCell><strong>Deadline</strong></TableCell>
+                              <TableCell><strong>Hours</strong></TableCell>
+                              <TableCell><strong>Status</strong></TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {selectedProject.tasks.map(task => {
                               const assignedEmployee = employees.find(e => e.id === task.assignedTo);
+                              const team = selectedProject.teams?.find(t => t.id === task.teamId);
+                              const taskDeadline = new Date(task.deadline);
+                              const today = new Date();
+                              const isOverdue = today > taskDeadline && task.status !== 'Done';
+                              
                               return (
                                 <TableRow key={task.id}>
-                                  <TableCell>{task.name}</TableCell>
-                                  <TableCell>{assignedEmployee?.name || 'N/A'}</TableCell>
-                                  <TableCell>{task.deadline}</TableCell>
                                   <TableCell>
-                                    <Chip label={task.status} size="small" />
+                                    <Typography variant="body2" fontWeight="600">
+                                      {task.name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {task.description}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    {assignedEmployee ? (
+                                      <Box display="flex" alignItems="center" gap={1}>
+                                        <Avatar sx={{ width: 24, height: 24, bgcolor: 'primary.main' }}>
+                                          {assignedEmployee.name.charAt(0)}
+                                        </Avatar>
+                                        <Typography variant="body2">
+                                          {assignedEmployee.name}
+                                        </Typography>
+                                      </Box>
+                                    ) : 'N/A'}
+                                  </TableCell>
+                                  <TableCell>
+                                    {team ? (
+                                      <Chip label={team.name} size="small" variant="outlined" />
+                                    ) : (
+                                      <Typography variant="caption" color="text.secondary">
+                                        No Team
+                                      </Typography>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2" color={isOverdue ? 'error.main' : 'text.primary'}>
+                                      {task.deadline}
+                                    </Typography>
+                                    {isOverdue && (
+                                      <Chip label="Overdue" size="small" color="error" sx={{ mt: 0.5 }} />
+                                    )}
+                                  </TableCell>
+                                  <TableCell>{task.estimatedHours}h</TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      label={task.status}
+                                      size="small"
+                                      color={
+                                        task.status === 'Done' ? 'success' :
+                                        task.status === 'In Progress' ? 'info' : 'default'
+                                      }
+                                      icon={task.status === 'Done' ? <CheckCircle /> : undefined}
+                                    />
                                   </TableCell>
                                 </TableRow>
                               );
@@ -617,10 +1269,10 @@ const Projects = ({ projects, setProjects, employees, setEmployees }) => {
                           </TableBody>
                         </Table>
                       </TableContainer>
-                    )}
-                  </Paper>
-                </Grid>
-              </Grid>
+                    </>
+                  )}
+                </Box>
+              )}
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 3 }}>
               <Button onClick={() => setShowDetailsModal(false)} variant="contained">

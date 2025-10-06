@@ -55,7 +55,7 @@ function App() {
           <Route
             path="/admin-dashboard"
             element={
-              <PrivateRoute role="ADMIN">
+              <PrivateRoute role="admin">
                 <Layout>
                   <AdminDashboard 
                     employees={employees} 
@@ -69,7 +69,7 @@ function App() {
           <Route
             path="/admin-employees"
             element={
-              <PrivateRoute role="ADMIN">
+              <PrivateRoute role="admin">
                 <Layout>
                   <AdminEmployees 
                     employees={employees} 
@@ -83,7 +83,7 @@ function App() {
           <Route
             path="/admin-projects"
             element={
-              <PrivateRoute role="ADMIN">
+              <PrivateRoute role="admin">
                 <Layout>
                   <AdminProjects 
                     projects={projects} 
@@ -98,7 +98,7 @@ function App() {
           <Route
             path="/admin-requests"
             element={
-              <PrivateRoute role="ADMIN">
+              <PrivateRoute role="admin">
                 <Layout>
                   <AdminRequests 
                     requests={requests} 

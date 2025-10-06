@@ -15,7 +15,7 @@ const Login = () => {
 
     try {
       const res = await API.post("/login", { empId, password });
-      const { token, role, id, name } = res.data; // Get token, role, id, and name from backend
+      const { token, role, id, name } = res.data;
 
       // Save JWT token, role, userId, and name in localStorage
       localStorage.setItem("token", token);
@@ -23,10 +23,13 @@ const Login = () => {
       localStorage.setItem("userId", id);
       localStorage.setItem("name", name);
 
-      // Redirect based on role
-      if (role === "ADMIN") navigate("/admin-dashboard");
-      else if (role === "manager") navigate("/manager-dashboard");
-      else navigate("/employee-dashboard");
+      // Normalize role comparison (uppercase)
+      const userRole = role?.toLowerCase();
+
+      if (userRole === "admin") navigate("/admin-dashboard");
+      else if (userRole === "manager") navigate("/manager-dashboard");
+      else if (userRole === "employee") navigate("/employee-dashboard");
+      else navigate("/");
     } catch (err) {
       setError(err.response?.data?.message || "Login failed");
     }

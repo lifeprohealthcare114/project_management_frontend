@@ -28,7 +28,7 @@ const Sidebar = () => {
 
   // Define menu items based on role
   const getMenuItems = () => {
-    if (userRole === 'ADMIN') {
+    if (userRole === 'admin') {
       return [
         { text: 'Dashboard', icon: <Dashboard />, path: '/admin-dashboard' },
         { text: 'Employees', icon: <People />, path: '/admin-employees' },

@@ -1,5 +1,4 @@
-// pages/admin/Dashboard.jsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Grid,
@@ -27,7 +26,33 @@ import {
   CheckCircle
 } from '@mui/icons-material';
 
-const Dashboard = ({ employees, projects, requests }) => {
+import { getDashboardData } from '../../../api/api'; // adjust path according to your setup
+
+const Dashboard = () => {
+  const [employees, setEmployees] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await getDashboardData();
+        setEmployees(response.data.employees || []);
+        setProjects(response.data.projects || []);
+        setRequests(response.data.requests || []);
+      } catch (err) {
+        setError('Failed to load dashboard data');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const stats = [
     {
       title: 'Total Employees',
@@ -74,6 +99,14 @@ const Dashboard = ({ employees, projects, requests }) => {
     return { name: dept, count, percentage };
   });
 
+  if (loading) {
+    return <Typography variant="h6" textAlign="center" mt={5}>Loading dashboard data...</Typography>;
+  }
+
+  if (error) {
+    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+  }
+
   return (
     <Box>
       <Typography variant="h4" fontWeight="600" gutterBottom color="primary.main">
@@ -87,9 +120,9 @@ const Dashboard = ({ employees, projects, requests }) => {
       <Grid container spacing={3} mb={4}>
         {stats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card 
+            <Card
               elevation={0}
-              sx={{ 
+              sx={{
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 2,
@@ -123,10 +156,10 @@ const Dashboard = ({ employees, projects, requests }) => {
       <Grid container spacing={3}>
         {/* Recent Employees */}
         <Grid item xs={12} lg={6}>
-          <Paper 
+          <Paper
             elevation={0}
-            sx={{ 
-              p: 3, 
+            sx={{
+              p: 3,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
@@ -150,9 +183,9 @@ const Dashboard = ({ employees, projects, requests }) => {
             ) : (
               <List>
                 {employees.slice(-5).reverse().map((emp, index) => (
-                  <ListItem 
+                  <ListItem
                     key={emp.id}
-                    sx={{ 
+                    sx={{
                       px: 0,
                       borderBottom: index !== Math.min(4, employees.length - 1) ? '1px solid' : 'none',
                       borderColor: 'divider'
@@ -171,8 +204,8 @@ const Dashboard = ({ employees, projects, requests }) => {
                       }
                       secondary={emp.designation}
                     />
-                    <Chip 
-                      label={emp.role} 
+                    <Chip
+                      label={emp.role}
                       size="small"
                       color="primary"
                       variant="outlined"
@@ -186,10 +219,10 @@ const Dashboard = ({ employees, projects, requests }) => {
 
         {/* Recent Projects */}
         <Grid item xs={12} lg={6}>
-          <Paper 
+          <Paper
             elevation={0}
-            sx={{ 
-              p: 3, 
+            sx={{
+              p: 3,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2,
@@ -213,9 +246,9 @@ const Dashboard = ({ employees, projects, requests }) => {
             ) : (
               <List>
                 {projects.slice(-5).reverse().map((proj, index) => (
-                  <ListItem 
+                  <ListItem
                     key={proj.id}
-                    sx={{ 
+                    sx={{
                       px: 0,
                       borderBottom: index !== Math.min(4, projects.length - 1) ? '1px solid' : 'none',
                       borderColor: 'divider'
@@ -234,7 +267,7 @@ const Dashboard = ({ employees, projects, requests }) => {
                       }
                       secondary={`Team: ${proj.teamMembers.length + 1} members`}
                     />
-                    <Chip 
+                    <Chip
                       label={proj.status}
                       size="small"
                       color={getStatusColor(proj.status)}
@@ -248,10 +281,10 @@ const Dashboard = ({ employees, projects, requests }) => {
 
         {/* Department Distribution */}
         <Grid item xs={12}>
-          <Paper 
+          <Paper
             elevation={0}
-            sx={{ 
-              p: 3, 
+            sx={{
+              p: 3,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2
@@ -280,11 +313,11 @@ const Dashboard = ({ employees, projects, requests }) => {
                           {dept.count} {dept.count === 1 ? 'employee' : 'employees'}
                         </Typography>
                       </Box>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={dept.percentage} 
-                        sx={{ 
-                          height: 8, 
+                      <LinearProgress
+                        variant="determinate"
+                        value={dept.percentage}
+                        sx={{
+                          height: 8,
                           borderRadius: 4,
                           bgcolor: 'grey.200'
                         }}
@@ -302,10 +335,10 @@ const Dashboard = ({ employees, projects, requests }) => {
 
         {/* Project Status Summary */}
         <Grid item xs={12}>
-          <Paper 
+          <Paper
             elevation={0}
-            sx={{ 
-              p: 3, 
+            sx={{
+              p: 3,
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 2
@@ -321,9 +354,9 @@ const Dashboard = ({ employees, projects, requests }) => {
                 const percentage = projects.length > 0 ? (count / projects.length) * 100 : 0;
                 return (
                   <Grid item xs={12} sm={4} key={status}>
-                    <Card 
+                    <Card
                       elevation={0}
-                      sx={{ 
+                      sx={{
                         bgcolor: getStatusColor(status) + '.50',
                         border: '1px solid',
                         borderColor: getStatusColor(status) + '.200'

@@ -1,4 +1,4 @@
-// pages/manager/Requests.jsx
+// pages/manager/Requests.jsx - Updated Version with Approval Authority
 import React, { useState } from 'react';
 import {
   Box,
@@ -22,14 +22,17 @@ import {
   Tabs,
   Tab,
   Avatar,
-  Alert
+  Alert,
+  IconButton
 } from '@mui/material';
 import {
   Add,
   Assignment,
   Pending,
   CheckCircle,
-  Cancel
+  Cancel,
+  ThumbUp,
+  ThumbDown
 } from '@mui/icons-material';
 
 const Requests = ({ managerId, requests, setRequests, employees, projects }) => {
@@ -54,6 +57,12 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
     };
     setRequests([...requests, newRequest]);
     setRequestForm({ projectId: '', equipment: '', quantity: '', reason: '' });
+  };
+
+  const handleRequestStatusUpdate = (requestId, newStatus) => {
+    setRequests(requests.map(req => 
+      req.id === requestId ? { ...req, status: newStatus } : req
+    ));
   };
 
   const getStatusColor = (status) => {
@@ -104,13 +113,17 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
     ? managerRequests.filter(r => r.status === 'Approved')
     : managerRequests.filter(r => r.status === 'Rejected');
 
+  // Separate requests by requester
+  const myRequests = filteredRequests.filter(r => r.employeeId === managerId);
+  const teamRequests = filteredRequests.filter(r => r.employeeId !== managerId);
+
   return (
     <Box>
       <Typography variant="h4" fontWeight="600" gutterBottom color="primary.main">
         Equipment Requests
       </Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
-        Create and view equipment requests for your projects
+        Create requests and approve/reject team requests for your projects
       </Typography>
 
       {/* Stats Cards */}
@@ -143,6 +156,40 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
             </Card>
           </Grid>
         ))}
+      </Grid>
+
+      {/* Request Categories */}
+      <Grid container spacing={2} mb={4}>
+        <Grid item xs={12} sm={6}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  My Requests
+                </Typography>
+                <Typography variant="h5" fontWeight="600" color="primary.main">
+                  {myRequests.length}
+                </Typography>
+              </Box>
+              <Chip label="Created by You" color="primary" />
+            </Stack>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Team Requests (Need Approval)
+                </Typography>
+                <Typography variant="h5" fontWeight="600" color="warning.main">
+                  {teamRequests.filter(r => r.status === 'Pending').length}
+                </Typography>
+              </Box>
+              <Chip label="Requires Action" color="warning" />
+            </Stack>
+          </Paper>
+        </Grid>
       </Grid>
 
       {/* Create Request Form */}
@@ -288,30 +335,42 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                   <TableCell><strong>Qty</strong></TableCell>
                   <TableCell><strong>Reason</strong></TableCell>
                   <TableCell><strong>Status</strong></TableCell>
+                  <TableCell align="center"><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredRequests.map(req => {
                   const employee = employees.find(e => e.id === parseInt(req.employeeId));
                   const project = projects.find(p => p.id === parseInt(req.projectId));
+                  const isMyRequest = req.employeeId === managerId;
+                  
                   return (
                     <TableRow 
                       key={req.id}
                       sx={{ 
                         '&:hover': { bgcolor: 'action.hover' },
-                        '&:last-child td': { border: 0 }
+                        '&:last-child td': { border: 0 },
+                        bgcolor: isMyRequest ? 'primary.50' : 'inherit'
                       }}
                     >
                       <TableCell>{req.requestDate}</TableCell>
                       <TableCell>
                         {employee ? (
-                          <Box>
-                            <Typography variant="body2" fontWeight="600">
-                              {employee.name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {employee.role}
-                            </Typography>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Avatar sx={{ width: 32, height: 32, bgcolor: isMyRequest ? 'success.main' : 'primary.main' }}>
+                              {employee.name.charAt(0)}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight="600">
+                                {employee.name} {isMyRequest && '(You)'}
+                              </Typography>
+                              <Chip 
+                                label={employee.role} 
+                                size="small" 
+                                color={employee.role === 'Manager' ? 'warning' : 'info'}
+                                variant="outlined"
+                              />
+                            </Box>
                           </Box>
                         ) : 'N/A'}
                       </TableCell>
@@ -359,6 +418,40 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                           color={getStatusColor(req.status)}
                         />
                       </TableCell>
+                      <TableCell align="center">
+                        {req.status === 'Pending' && !isMyRequest ? (
+                          <Stack direction="row" spacing={1} justifyContent="center">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={() => handleRequestStatusUpdate(req.id, 'Approved')}
+                              sx={{ 
+                                border: '1px solid',
+                                borderColor: 'success.main'
+                              }}
+                            >
+                              <ThumbUp fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleRequestStatusUpdate(req.id, 'Rejected')}
+                              sx={{ 
+                                border: '1px solid',
+                                borderColor: 'error.main'
+                              }}
+                            >
+                              <ThumbDown fontSize="small" />
+                            </IconButton>
+                          </Stack>
+                        ) : req.status === 'Pending' && isMyRequest ? (
+                          <Chip label="Awaiting Admin" size="small" variant="outlined" color="warning" />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            -
+                          </Typography>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -368,11 +461,16 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
         )}
       </Paper>
 
-      {/* Info Alert */}
-      {managerRequests.filter(r => r.status === 'Pending').length > 0 && (
-        <Alert severity="info" sx={{ mt: 3 }}>
-          You have {managerRequests.filter(r => r.status === 'Pending').length} pending request(s). 
-          Admin will review and approve/reject these requests.
+      {/* Info Alerts */}
+      {teamRequests.filter(r => r.status === 'Pending').length > 0 && (
+        <Alert severity="warning" sx={{ mt: 3 }}>
+          <strong>Action Required:</strong> You have {teamRequests.filter(r => r.status === 'Pending').length} pending request(s) from your team members awaiting your approval.
+        </Alert>
+      )}
+      
+      {myRequests.filter(r => r.status === 'Pending').length > 0 && (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          You have {myRequests.filter(r => r.status === 'Pending').length} of your own request(s) pending. Admin will review and approve/reject these requests.
         </Alert>
       )}
     </Box>

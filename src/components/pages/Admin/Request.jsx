@@ -1,5 +1,4 @@
-// pages/admin/Requests.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -23,7 +22,12 @@ import {
   Tabs,
   Tab,
   Avatar,
-  Alert
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material';
 import {
   Add,
@@ -32,36 +36,133 @@ import {
   Pending,
   Assignment,
   ThumbUp,
-  ThumbDown
+  ThumbDown,
+  Visibility,
+  Close
 } from '@mui/icons-material';
 
-const Requests = ({ requests, setRequests, employees, projects }) => {
+import { getRequests, getEmployees, getProjects, createRequest, updateRequestStatus } from '../../../api/api'; // Adjust path as needed
+
+const Requests = () => {
+  const [requests, setRequests] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [requestForm, setRequestForm] = useState({
-    employeeId: '', projectId: '', equipment: '', quantity: '', reason: ''
+    employeeId: '',
+    projectId: '',
+    equipment: '',
+    quantity: '',
+    reason: ''
   });
   const [tabValue, setTabValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const handleRequestSubmit = (e) => {
+  // Confirmation dialog state
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // { requestId, newStatus }
+
+  // Request details modal state
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [reqRes, empRes, projRes] = await Promise.all([
+          getRequests(),
+          getEmployees(),
+          getProjects()
+        ]);
+        setRequests(reqRes.data || []);
+        setEmployees(empRes.data || []);
+        setProjects(projRes.data || []);
+      } catch (err) {
+        setError('Failed to load data');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const handleRequestSubmit = async (e) => {
     e.preventDefault();
-    setRequests([...requests, { 
-      id: Date.now(), 
-      ...requestForm, 
-      status: 'Pending', 
-      requestDate: new Date().toLocaleDateString() 
-    }]);
-    setRequestForm({ employeeId: '', projectId: '', equipment: '', quantity: '', reason: '' });
+    try {
+      const newRequest = {
+        ...requestForm,
+        status: 'Pending',
+        requestDate: new Date().toLocaleDateString()
+      };
+      const res = await createRequest(newRequest);
+      setRequests(prev => [...prev, res.data]);
+      setRequestForm({
+        employeeId: '',
+        projectId: '',
+        equipment: '',
+        quantity: '',
+        reason: ''
+      });
+    } catch (err) {
+      setError('Failed to submit request');
+      console.error(err);
+    }
   };
 
-  const handleRequestStatusUpdate = (requestId, newStatus) => {
-    setRequests(requests.map(req => req.id === requestId ? { ...req, status: newStatus } : req));
+  const handleRequestStatusUpdate = async (requestId, newStatus) => {
+    try {
+      const res = await updateRequestStatus(requestId, newStatus);
+      if (res) {
+        setRequests(prev =>
+          prev.map(req => (req.id === requestId ? res.data : req))
+        );
+      }
+    } catch (err) {
+      setError('Failed to update request status');
+      console.error(err);
+    }
+  };
+
+  // Opens the confirmation dialog before updating status
+  const openConfirmDialog = (requestId, newStatus) => {
+    setConfirmAction({ requestId, newStatus });
+    setConfirmDialogOpen(true);
+  };
+
+  const closeConfirmDialog = () => {
+    setConfirmDialogOpen(false);
+    setConfirmAction(null);
+  };
+
+  const confirmStatusChange = () => {
+    if (confirmAction) {
+      handleRequestStatusUpdate(confirmAction.requestId, confirmAction.newStatus);
+    }
+    closeConfirmDialog();
+  };
+
+  // Opens request details modal
+  const openRequestDetails = (request) => {
+    setSelectedRequest(request);
+    setDetailsModalOpen(true);
+  };
+
+  const closeRequestDetails = () => {
+    setSelectedRequest(null);
+    setDetailsModalOpen(false);
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Approved': return 'success';
-      case 'Rejected': return 'error';
-      case 'Pending': return 'warning';
-      default: return 'default';
+      case 'Approved':
+        return 'success';
+      case 'Rejected':
+        return 'error';
+      case 'Pending':
+        return 'warning';
+      default:
+        return 'default';
     }
   };
 
@@ -96,13 +197,21 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
     }
   ];
 
-  const filteredRequests = tabValue === 0 
-    ? requests 
-    : tabValue === 1 
-    ? requests.filter(r => r.status === 'Pending')
-    : tabValue === 2
-    ? requests.filter(r => r.status === 'Approved')
-    : requests.filter(r => r.status === 'Rejected');
+  const filteredRequests = tabValue === 0
+    ? requests
+    : tabValue === 1
+      ? requests.filter(r => r.status === 'Pending')
+      : tabValue === 2
+        ? requests.filter(r => r.status === 'Approved')
+        : requests.filter(r => r.status === 'Rejected');
+
+  if (loading) {
+    return <Typography variant="h6" textAlign="center" mt={5}>Loading requests...</Typography>;
+  }
+
+  if (error) {
+    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+  }
 
   return (
     <Box>
@@ -113,13 +222,12 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
         Manage and approve equipment requests from all employees
       </Typography>
 
-      {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
         {stats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card 
+            <Card
               elevation={0}
-              sx={{ 
+              sx={{
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 2
@@ -145,12 +253,11 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
         ))}
       </Grid>
 
-      {/* Create Request Form */}
-      <Paper 
+      <Paper
         elevation={0}
-        sx={{ 
-          p: 3, 
-          mb: 3, 
+        sx={{
+          p: 3,
+          mb: 3,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2
@@ -168,7 +275,7 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                 select
                 label="Employee"
                 value={requestForm.employeeId}
-                onChange={(e) => setRequestForm({...requestForm, employeeId: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, employeeId: e.target.value })}
                 required
                 size="small"
               >
@@ -191,7 +298,7 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                 select
                 label="Project"
                 value={requestForm.projectId}
-                onChange={(e) => setRequestForm({...requestForm, projectId: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, projectId: e.target.value })}
                 required
                 size="small"
               >
@@ -213,7 +320,7 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                 fullWidth
                 label="Equipment"
                 value={requestForm.equipment}
-                onChange={(e) => setRequestForm({...requestForm, equipment: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, equipment: e.target.value })}
                 placeholder="e.g., Laptop, Monitor, Software License"
                 required
                 size="small"
@@ -225,7 +332,7 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                 type="number"
                 label="Quantity"
                 value={requestForm.quantity}
-                onChange={(e) => setRequestForm({...requestForm, quantity: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, quantity: e.target.value })}
                 inputProps={{ min: 1 }}
                 required
                 size="small"
@@ -238,7 +345,7 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                 rows={3}
                 label="Reason"
                 value={requestForm.reason}
-                onChange={(e) => setRequestForm({...requestForm, reason: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })}
                 placeholder="Explain why this equipment is needed"
                 required
                 size="small"
@@ -258,10 +365,9 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
         </form>
       </Paper>
 
-      {/* Requests List */}
-      <Paper 
+      <Paper
         elevation={0}
-        sx={{ 
+        sx={{
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2
@@ -271,8 +377,8 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
           <Typography variant="h6" fontWeight="600" gutterBottom>
             All Requests
           </Typography>
-          <Tabs 
-            value={tabValue} 
+          <Tabs
+            value={tabValue}
             onChange={(e, newValue) => setTabValue(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
@@ -319,9 +425,9 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                   const employee = employees.find(e => e.id === parseInt(req.employeeId));
                   const project = projects.find(p => p.id === parseInt(req.projectId));
                   return (
-                    <TableRow 
+                    <TableRow
                       key={req.id}
-                      sx={{ 
+                      sx={{
                         '&:hover': { bgcolor: 'action.hover' },
                         '&:last-child td': { border: 0 }
                       }}
@@ -330,40 +436,28 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                       <TableCell>
                         {employee ? (
                           <Box>
-                            <Typography variant="body2" fontWeight="600">
-                              {employee.name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {employee.empId}
-                            </Typography>
+                            <Typography variant="body2" fontWeight="600">{employee.name}</Typography>
+                            <Typography variant="caption" color="text.secondary">{employee.empId}</Typography>
                           </Box>
                         ) : 'N/A'}
                       </TableCell>
                       <TableCell>
                         {project ? (
                           <Box>
-                            <Typography variant="body2" fontWeight="600">
-                              {project.name}
-                            </Typography>
-                            <Chip 
-                              label={project.status} 
-                              size="small" 
-                              variant="outlined"
-                            />
+                            <Typography variant="body2" fontWeight="600">{project.name}</Typography>
+                            <Chip label={project.status} size="small" variant="outlined" />
                           </Box>
                         ) : 'N/A'}
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" fontWeight="600">
-                          {req.equipment}
-                        </Typography>
+                        <Typography variant="body2" fontWeight="600">{req.equipment}</Typography>
                       </TableCell>
                       <TableCell>
                         <Chip label={req.quantity} size="small" variant="outlined" />
                       </TableCell>
                       <TableCell sx={{ maxWidth: 200 }}>
-                        <Typography 
-                          variant="body2" 
+                        <Typography
+                          variant="body2"
                           color="text.secondary"
                           sx={{
                             overflow: 'hidden',
@@ -377,43 +471,38 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={req.status}
-                          size="small"
-                          color={getStatusColor(req.status)}
-                        />
+                        <Chip label={req.status} size="small" color={getStatusColor(req.status)} />
                       </TableCell>
                       <TableCell align="center">
-                        {req.status === 'Pending' ? (
-                          <Stack direction="row" spacing={1} justifyContent="center">
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() => handleRequestStatusUpdate(req.id, 'Approved')}
-                              sx={{ 
-                                border: '1px solid',
-                                borderColor: 'success.main'
-                              }}
-                            >
-                              <ThumbUp fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => handleRequestStatusUpdate(req.id, 'Rejected')}
-                              sx={{ 
-                                border: '1px solid',
-                                borderColor: 'error.main'
-                              }}
-                            >
-                              <ThumbDown fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            -
-                          </Typography>
-                        )}
+                        <Stack direction="row" spacing={1} justifyContent="center">
+                          <IconButton
+                            size="small"
+                            color="info"
+                            onClick={() => setSelectedRequest(req) || setDetailsModalOpen(true)}
+                          >
+                            <Visibility />
+                          </IconButton>
+                          {req.status === 'Pending' && (
+                            <>
+                              <IconButton
+                                size="small"
+                                color="success"
+                                onClick={() => openConfirmDialog(req.id, 'Approved')}
+                                sx={{ border: '1px solid', borderColor: 'success.main' }}
+                              >
+                                <ThumbUp fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => openConfirmDialog(req.id, 'Rejected')}
+                                sx={{ border: '1px solid', borderColor: 'error.main' }}
+                              >
+                                <ThumbDown fontSize="small" />
+                              </IconButton>
+                            </>
+                          )}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   );
@@ -424,7 +513,76 @@ const Requests = ({ requests, setRequests, employees, projects }) => {
         )}
       </Paper>
 
-      {/* Pending Requests Alert */}
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmDialogOpen} onClose={closeConfirmDialog}>
+        <DialogTitle>Confirm Action</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to {confirmAction?.newStatus === 'Approved' ? 'approve' : 'reject'} this request?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeConfirmDialog}>Cancel</Button>
+          <Button onClick={confirmStatusChange} color="primary" variant="contained" autoFocus>
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Request Details Modal */}
+      <Dialog open={detailsModalOpen} onClose={() => setDetailsModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Request Details
+          <IconButton
+            aria-label="close"
+            onClick={() => setDetailsModalOpen(false)}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8
+            }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <Divider />
+        <DialogContent dividers>
+          {selectedRequest && (
+            <>
+              <Typography variant="subtitle1" gutterBottom><strong>Employee Information</strong></Typography>
+              {(() => {
+                const emp = employees.find(e => e.id === parseInt(selectedRequest.employeeId));
+                if (!emp) return <Typography>N/A</Typography>;
+                return (
+                  <>
+                    <Typography>Name: {emp.name}</Typography>
+                    <Typography>Employee ID: {emp.empId}</Typography>
+                    <Typography>Email: {emp.email}</Typography>
+                    <Typography>Designation: {emp.designation}</Typography>
+                    <Typography>Department: {emp.department}</Typography>
+                  </>
+                );
+              })()}
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle1" gutterBottom><strong>Project Information</strong></Typography>
+              {(() => {
+                const proj = projects.find(p => p.id === parseInt(selectedRequest.projectId));
+                if (!proj) return <Typography>N/A</Typography>;
+                return (
+                  <>
+                    <Typography>Name: {proj.name}</Typography>
+                    <Typography>Status: {proj.status}</Typography>
+                    <Typography>Description: {proj.description}</Typography>
+                    <Typography>Start Date: {proj.startDate}</Typography>
+                    <Typography>End Date: {proj.endDate}</Typography>
+                  </>
+                );
+              })()}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {requests.filter(r => r.status === 'Pending').length > 0 && tabValue === 0 && (
         <Alert severity="warning" sx={{ mt: 3 }}>
           You have {requests.filter(r => r.status === 'Pending').length} pending request(s) requiring your attention
