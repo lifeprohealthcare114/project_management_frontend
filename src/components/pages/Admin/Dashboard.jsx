@@ -14,7 +14,9 @@ import {
   List,
   ListItem,
   ListItemAvatar,
-  ListItemText
+  ListItemText,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   People,
@@ -26,7 +28,7 @@ import {
   CheckCircle
 } from '@mui/icons-material';
 
-import { getDashboardData } from '../../../api/api'; // adjust path according to your setup
+import { getDashboardData } from '../../../api/api';
 
 const Dashboard = () => {
   const [employees, setEmployees] = useState([]);
@@ -35,23 +37,29 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await getDashboardData();
-        setEmployees(response.data.employees || []);
-        setProjects(response.data.projects || []);
-        setRequests(response.data.requests || []);
-      } catch (err) {
-        setError('Failed to load dashboard data');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const userId = parseInt(localStorage.getItem('userId'));
+  const role = localStorage.getItem('role') || 'admin';
 
+  useEffect(() => {
     fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // For admin, fetch all data without userId filter
+      const response = await getDashboardData();
+      setEmployees(response.data.employees || []);
+      setProjects(response.data.projects || []);
+      setRequests(response.data.requests || []);
+    } catch (err) {
+      setError('Failed to load dashboard data');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const stats = [
     {
@@ -100,11 +108,11 @@ const Dashboard = () => {
   });
 
   if (loading) {
-    return <Typography variant="h6" textAlign="center" mt={5}>Loading dashboard data...</Typography>;
-  }
-
-  if (error) {
-    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress />
+      </Box>
+    );
   }
 
   return (
@@ -113,8 +121,14 @@ const Dashboard = () => {
         Dashboard Overview
       </Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
-        Welcome back! Here's what's happening with your projects today.
+        Welcome back! Here's what's happening with your organization today.
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
@@ -265,7 +279,7 @@ const Dashboard = () => {
                           {proj.name}
                         </Typography>
                       }
-                      secondary={`Team: ${proj.teamMembers.length + 1} members`}
+                      secondary={`Manager: ${proj.manager?.name || 'N/A'} • Team: ${proj.teamMembers?.length || 0} members`}
                     />
                     <Chip
                       label={proj.status}
@@ -322,7 +336,7 @@ const Dashboard = () => {
                           bgcolor: 'grey.200'
                         }}
                       />
-                      <Typography variant="caption" color="text.secondary" mt={0.5}>
+                      <Typography variant="caption" color="text.secondary" mt={0.5} display="block">
                         {dept.percentage.toFixed(1)}%
                       </Typography>
                     </Box>

@@ -8,6 +8,8 @@ import CssBaseline from '@mui/material/CssBaseline';
 import Login from './components/Login';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout';
+import Signup from './components/Signup';
+import ForgotPassword from './components/ForgotPassword';
 
 // Import Admin Components
 import AdminDashboard from './components/pages/Admin/Dashboard';
@@ -43,6 +45,9 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [requests, setRequests] = useState([]);
 
+  // Read userId once from localStorage
+  const userId = parseInt(localStorage.getItem('userId'), 10);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -57,11 +62,7 @@ function App() {
             element={
               <PrivateRoute role="admin">
                 <Layout>
-                  <AdminDashboard 
-                    employees={employees} 
-                    projects={projects} 
-                    requests={requests} 
-                  />
+                  <AdminDashboard employees={employees} projects={projects} requests={requests} />
                 </Layout>
               </PrivateRoute>
             }
@@ -71,11 +72,7 @@ function App() {
             element={
               <PrivateRoute role="admin">
                 <Layout>
-                  <AdminEmployees 
-                    employees={employees} 
-                    setEmployees={setEmployees} 
-                    projects={projects} 
-                  />
+                  <AdminEmployees employees={employees} setEmployees={setEmployees} projects={projects} />
                 </Layout>
               </PrivateRoute>
             }
@@ -85,12 +82,7 @@ function App() {
             element={
               <PrivateRoute role="admin">
                 <Layout>
-                  <AdminProjects 
-                    projects={projects} 
-                    setProjects={setProjects} 
-                    employees={employees}
-                    setEmployees={setEmployees}
-                  />
+                  <AdminProjects projects={projects} setProjects={setProjects} employees={employees} setEmployees={setEmployees} />
                 </Layout>
               </PrivateRoute>
             }
@@ -100,12 +92,7 @@ function App() {
             element={
               <PrivateRoute role="admin">
                 <Layout>
-                  <AdminRequests 
-                    requests={requests} 
-                    setRequests={setRequests} 
-                    employees={employees}
-                    projects={projects}
-                  />
+                  <AdminRequests requests={requests} setRequests={setRequests} employees={employees} projects={projects} />
                 </Layout>
               </PrivateRoute>
             }
@@ -117,12 +104,7 @@ function App() {
             element={
               <PrivateRoute role="manager">
                 <Layout>
-                  <ManagerDashboard 
-                    managerId={parseInt(localStorage.getItem('userId'))}
-                    projects={projects} 
-                    employees={employees}
-                    requests={requests}
-                  />
+                  <ManagerDashboard managerId={userId} projects={projects} employees={employees} requests={requests} />
                 </Layout>
               </PrivateRoute>
             }
@@ -132,11 +114,7 @@ function App() {
             element={
               <PrivateRoute role="manager">
                 <Layout>
-                  <ManagerProjects 
-                    managerId={parseInt(localStorage.getItem('userId'))}
-                    projects={projects} 
-                    employees={employees}
-                  />
+                  <ManagerProjects managerId={userId} projects={projects} employees={employees} />
                 </Layout>
               </PrivateRoute>
             }
@@ -146,11 +124,7 @@ function App() {
             element={
               <PrivateRoute role="manager">
                 <Layout>
-                  <ManagerTeam 
-                    managerId={parseInt(localStorage.getItem('userId'))}
-                    projects={projects} 
-                    employees={employees}
-                  />
+                  <ManagerTeam managerId={userId} projects={projects} employees={employees} />
                 </Layout>
               </PrivateRoute>
             }
@@ -160,13 +134,7 @@ function App() {
             element={
               <PrivateRoute role="manager">
                 <Layout>
-                  <ManagerRequests 
-                    managerId={parseInt(localStorage.getItem('userId'))}
-                    requests={requests}
-                    setRequests={setRequests}
-                    employees={employees}
-                    projects={projects}
-                  />
+                  <ManagerRequests managerId={userId} requests={requests} setRequests={setRequests} employees={employees} projects={projects} />
                 </Layout>
               </PrivateRoute>
             }
@@ -178,11 +146,7 @@ function App() {
             element={
               <PrivateRoute role="employee">
                 <Layout>
-                  <EmployeeDashboard 
-                    employeeId={parseInt(localStorage.getItem('userId'))}
-                    projects={projects} 
-                    requests={requests}
-                  />
+                  <EmployeeDashboard employeeId={userId} projects={projects} requests={requests} />
                 </Layout>
               </PrivateRoute>
             }
@@ -192,11 +156,7 @@ function App() {
             element={
               <PrivateRoute role="employee">
                 <Layout>
-                  <EmployeeProjects 
-                    employeeId={parseInt(localStorage.getItem('userId'))}
-                    projects={projects} 
-                    employees={employees}
-                  />
+                  <EmployeeProjects employeeId={userId} projects={projects} employees={employees} />
                 </Layout>
               </PrivateRoute>
             }
@@ -206,17 +166,13 @@ function App() {
             element={
               <PrivateRoute role="employee">
                 <Layout>
-                  <EmployeeRequests 
-                    employeeId={parseInt(localStorage.getItem('userId'))}
-                    requests={requests}
-                    setRequests={setRequests}
-                    projects={projects}
-                  />
+                  <EmployeeRequests employeeId={userId} requests={requests} setRequests={setRequests} projects={projects} />
                 </Layout>
               </PrivateRoute>
             }
           />
-
+<Route path="/signup" element={<Signup />} />
+<Route path="/forgot-password" element={<ForgotPassword />} />
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

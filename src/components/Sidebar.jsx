@@ -1,4 +1,3 @@
-// Sidebar.jsx
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -24,7 +23,7 @@ const drawerWidth = 240;
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const userRole = localStorage.getItem('role');
+  const userRole = localStorage.getItem('role')?.toLowerCase(); // normalize
 
   // Define menu items based on role
   const getMenuItems = () => {

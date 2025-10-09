@@ -1,5 +1,7 @@
-// pages/employee/Requests.jsx
-import React, { useState } from 'react';
+// Employee Requests.jsx
+// Path: src/pages/employee/Requests.jsx
+
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -22,7 +24,8 @@ import {
   Tabs,
   Tab,
   Avatar,
-  Alert
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -31,27 +34,74 @@ import {
   CheckCircle,
   Cancel
 } from '@mui/icons-material';
+import { 
+  getProjectsByEmployee, 
+  getRequestsByEmployee, 
+  createRequest 
+} from '../../../api/api';
 
-const Requests = ({ employeeId, requests, setRequests, projects }) => {
+const Requests = () => {
+  const employeeId = parseInt(localStorage.getItem('userId'));
+
+  const [requests, setRequests] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [requestForm, setRequestForm] = useState({
     projectId: '', equipment: '', quantity: '', reason: ''
   });
   const [tabValue, setTabValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const employeeProjects = projects.filter(p => p.teamMembers.includes(employeeId));
-  const employeeRequests = requests.filter(req => req.employeeId === employeeId);
+  useEffect(() => {
+    fetchData();
+  }, [employeeId]);
 
-  const handleRequestSubmit = (e) => {
+  const fetchData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Fetch employee's projects
+      const projectsRes = await getProjectsByEmployee(employeeId);
+      setProjects(projectsRes.data || []);
+
+      // Fetch employee's requests
+      const requestsRes = await getRequestsByEmployee(employeeId);
+      setRequests(requestsRes.data || []);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestSubmit = async (e) => {
     e.preventDefault();
-    const newRequest = {
-      id: Date.now(),
-      employeeId: employeeId,
-      ...requestForm,
-      status: 'Pending',
-      requestDate: new Date().toLocaleDateString()
-    };
-    setRequests([...requests, newRequest]);
-    setRequestForm({ projectId: '', equipment: '', quantity: '', reason: '' });
+    setError('');
+    setSuccess('');
+    
+    try {
+ const newRequest = {
+  employeeId: employeeId,
+  projectId: parseInt(requestForm.projectId),
+  equipment: requestForm.equipment,
+  quantity: parseInt(requestForm.quantity),
+  reason: requestForm.reason
+};
+
+
+      const res = await createRequest(newRequest);
+      setRequests([...requests, res.data]);
+      setRequestForm({ projectId: '', equipment: '', quantity: '', reason: '' });
+      setSuccess('Request submitted successfully!');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error creating request:', err);
+      setError('Failed to submit request. Please try again.');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -66,28 +116,28 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
   const stats = [
     {
       title: 'Total Requests',
-      value: employeeRequests.length,
+      value: requests.length,
       icon: <Assignment />,
       color: '#1976d2',
       bgColor: '#e3f2fd'
     },
     {
       title: 'Pending',
-      value: employeeRequests.filter(r => r.status === 'Pending').length,
+      value: requests.filter(r => r.status === 'Pending').length,
       icon: <Pending />,
       color: '#ed6c02',
       bgColor: '#fff3e0'
     },
     {
       title: 'Approved',
-      value: employeeRequests.filter(r => r.status === 'Approved').length,
+      value: requests.filter(r => r.status === 'Approved').length,
       icon: <CheckCircle />,
       color: '#2e7d32',
       bgColor: '#e8f5e9'
     },
     {
       title: 'Rejected',
-      value: employeeRequests.filter(r => r.status === 'Rejected').length,
+      value: requests.filter(r => r.status === 'Rejected').length,
       icon: <Cancel />,
       color: '#d32f2f',
       bgColor: '#ffebee'
@@ -95,12 +145,20 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
   ];
 
   const filteredRequests = tabValue === 0 
-    ? employeeRequests 
+    ? requests 
     : tabValue === 1 
-    ? employeeRequests.filter(r => r.status === 'Pending')
+    ? requests.filter(r => r.status === 'Pending')
     : tabValue === 2
-    ? employeeRequests.filter(r => r.status === 'Approved')
-    : employeeRequests.filter(r => r.status === 'Rejected');
+    ? requests.filter(r => r.status === 'Approved')
+    : requests.filter(r => r.status === 'Rejected');
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -110,6 +168,18 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
       <Typography variant="body2" color="text.secondary" mb={3}>
         Create and track your equipment requests
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess('')}>
+          {success}
+        </Alert>
+      )}
 
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
@@ -171,13 +241,13 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
                 size="small"
               >
                 <MenuItem value="">Select Project</MenuItem>
-                {employeeProjects.map(proj => (
+                {projects.map(proj => (
                   <MenuItem key={proj.id} value={proj.id}>
                     {proj.name}
                   </MenuItem>
                 ))}
               </TextField>
-              {employeeProjects.length === 0 && (
+              {projects.length === 0 && (
                 <Alert severity="warning" sx={{ mt: 1 }}>
                   No projects assigned to you. You need to be assigned to a project to create requests.
                 </Alert>
@@ -224,7 +294,7 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
                 type="submit"
                 variant="contained"
                 startIcon={<Add />}
-                disabled={employeeProjects.length === 0}
+                disabled={projects.length === 0}
               >
                 Submit Request
               </Button>
@@ -251,14 +321,14 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
             onChange={(e, newValue) => setTabValue(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
-            <Tab label={`All (${employeeRequests.length})`} />
-            <Tab label={`Pending (${employeeRequests.filter(r => r.status === 'Pending').length})`} />
-            <Tab label={`Approved (${employeeRequests.filter(r => r.status === 'Approved').length})`} />
-            <Tab label={`Rejected (${employeeRequests.filter(r => r.status === 'Rejected').length})`} />
+            <Tab label={`All (${requests.length})`} />
+            <Tab label={`Pending (${requests.filter(r => r.status === 'Pending').length})`} />
+            <Tab label={`Approved (${requests.filter(r => r.status === 'Approved').length})`} />
+            <Tab label={`Rejected (${requests.filter(r => r.status === 'Rejected').length})`} />
           </Tabs>
         </Box>
 
-        {employeeRequests.length === 0 ? (
+        {requests.length === 0 ? (
           <Box textAlign="center" py={8}>
             <Assignment sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -288,64 +358,66 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredRequests.map(req => {
-                  const project = projects.find(p => p.id === parseInt(req.projectId));
-                  return (
-                    <TableRow 
-                      key={req.id}
-                      sx={{ 
-                        '&:hover': { bgcolor: 'action.hover' },
-                        '&:last-child td': { border: 0 }
-                      }}
-                    >
-                      <TableCell>{req.requestDate}</TableCell>
-                      <TableCell>
-                        {project ? (
-                          <Box>
-                            <Typography variant="body2" fontWeight="600">
-                              {project.name}
-                            </Typography>
-                            <Chip 
-                              label={project.status} 
-                              size="small" 
-                              variant="outlined"
-                            />
-                          </Box>
-                        ) : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight="600">
-                          {req.equipment}
+                {filteredRequests.map(req => (
+                  <TableRow 
+                    key={req.id}
+                    sx={{ 
+                      '&:hover': { bgcolor: 'action.hover' },
+                      '&:last-child td': { border: 0 }
+                    }}
+                  >
+                    <TableCell>{req.requestDate}</TableCell>
+                    <TableCell>
+                      {req.project ? (
+                        <Box>
+                          <Typography variant="body2" fontWeight="600">
+                            {req.project.name}
+                          </Typography>
+                          <Chip 
+                            label={req.project.status} 
+                            size="small" 
+                            variant="outlined"
+                          />
+                        </Box>
+                      ) : 'N/A'}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="600">
+                        {req.equipment}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={req.quantity} size="small" variant="outlined" />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 300 }}>
+                      <Typography 
+                        variant="body2" 
+                        color="text.secondary"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical'
+                        }}
+                      >
+                        {req.reason}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={req.status}
+                        size="small"
+                        color={getStatusColor(req.status)}
+                      />
+                      {req.respondedAt && (
+                        <Typography variant="caption" display="block" color="text.secondary" mt={0.5}>
+                          Responded: {req.respondedAt}
                         </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={req.quantity} size="small" variant="outlined" />
-                      </TableCell>
-                      <TableCell sx={{ maxWidth: 300 }}>
-                        <Typography 
-                          variant="body2" 
-                          color="text.secondary"
-                          sx={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical'
-                          }}
-                        >
-                          {req.reason}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip 
-                          label={req.status}
-                          size="small"
-                          color={getStatusColor(req.status)}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
@@ -353,15 +425,15 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
       </Paper>
 
       {/* Pending Requests Alert */}
-      {employeeRequests.filter(r => r.status === 'Pending').length > 0 && tabValue === 0 && (
+      {requests.filter(r => r.status === 'Pending').length > 0 && tabValue === 0 && (
         <Alert severity="info" sx={{ mt: 3 }}>
-          You have {employeeRequests.filter(r => r.status === 'Pending').length} pending request(s). 
-          Admin will review and approve/reject your requests.
+          You have {requests.filter(r => r.status === 'Pending').length} pending request(s). 
+          Your manager or admin will review and approve/reject your requests.
         </Alert>
       )}
 
       {/* Request Summary */}
-      {employeeRequests.length > 0 && (
+      {requests.length > 0 && (
         <Paper 
           elevation={0}
           sx={{ 
@@ -380,7 +452,7 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
             <Grid item xs={6} sm={3}>
               <Box textAlign="center" p={2} bgcolor="grey.50" borderRadius={2}>
                 <Typography variant="h4" fontWeight="700" color="primary.main">
-                  {employeeRequests.length}
+                  {requests.length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Total Requests
@@ -390,7 +462,7 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
             <Grid item xs={6} sm={3}>
               <Box textAlign="center" p={2} bgcolor="warning.50" borderRadius={2}>
                 <Typography variant="h4" fontWeight="700" color="warning.main">
-                  {employeeRequests.filter(r => r.status === 'Pending').length}
+                  {requests.filter(r => r.status === 'Pending').length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Pending
@@ -400,7 +472,7 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
             <Grid item xs={6} sm={3}>
               <Box textAlign="center" p={2} bgcolor="success.50" borderRadius={2}>
                 <Typography variant="h4" fontWeight="700" color="success.main">
-                  {employeeRequests.filter(r => r.status === 'Approved').length}
+                  {requests.filter(r => r.status === 'Approved').length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Approved
@@ -410,7 +482,7 @@ const Requests = ({ employeeId, requests, setRequests, projects }) => {
             <Grid item xs={6} sm={3}>
               <Box textAlign="center" p={2} bgcolor="error.50" borderRadius={2}>
                 <Typography variant="h4" fontWeight="700" color="error.main">
-                  {employeeRequests.filter(r => r.status === 'Rejected').length}
+                  {requests.filter(r => r.status === 'Rejected').length}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Rejected

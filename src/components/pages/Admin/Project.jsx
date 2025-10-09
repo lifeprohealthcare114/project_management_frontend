@@ -33,7 +33,9 @@ import {
   ListItemAvatar,
   Tabs,
   Tab,
-  Tooltip
+  Tooltip,
+  Snackbar,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add,
@@ -48,10 +50,17 @@ import {
   PersonAdd,
   CheckCircle,
   AccessTime,
-  Warning
+  Warning,
+  AddTask
 } from '@mui/icons-material';
 
-import { getProjects, createProject, updateProject, getEmployees } from '../../../api/api';
+import { 
+  getProjects, 
+  createProject, 
+  updateProject, 
+  getEmployees,
+  deleteProject 
+} from '../../../api/api';
 
 const Projects = () => {
   const [projects, setProjects] = useState([]);
@@ -60,46 +69,76 @@ const Projects = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
   const [detailsTab, setDetailsTab] = useState(0);
   const [projectForm, setProjectForm] = useState({
-    name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
+    name: '', 
+    description: '', 
+    startDate: '', 
+    endDate: '', 
+    managerId: '', 
+    teamMembers: [], 
+    status: 'Planning'
+  });
+  const [taskForm, setTaskForm] = useState({
+    name: '', 
+    description: '', 
+    assignedTo: '', 
+    teamId: '', 
+    deadline: '', 
+    estimatedHours: '', 
+    status: 'To Do'
   });
   const [newMembers, setNewMembers] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [error, setError] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await getProjects();
-        setProjects(res.data || []);
-      } catch (e) {
-        setError('Failed to load projects');
-        console.error(e);
-      } finally {
-        setLoadingProjects(false);
-      }
-    };
-
-    const fetchEmployees = async () => {
-      try {
-        const res = await getEmployees();
-        setEmployees(res.data || []);
-      } catch (e) {
-        setError('Failed to load employees');
-        console.error(e);
-      } finally {
-        setLoadingEmployees(false);
-      }
-    };
-
     fetchProjects();
     fetchEmployees();
   }, []);
 
-  // Calculate timeline status
+  const fetchProjects = async () => {
+    try {
+      setLoadingProjects(true);
+      const res = await getProjects();
+      setProjects(res.data || []);
+      setError(null);
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || 'Failed to load projects';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error fetching projects:', e);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const res = await getEmployees();
+      setEmployees(res.data || []);
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || 'Failed to load employees';
+      console.error('Error fetching employees:', e);
+      showSnackbar(errorMsg, 'error');
+    } finally {
+      setLoadingEmployees(false);
+    }
+  };
+
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   const getTimelineStatus = (startDate, endDate, status) => {
     const today = new Date();
     const start = new Date(startDate);
@@ -141,12 +180,21 @@ const Projects = () => {
       const res = await createProject(newProject);
       setProjects(prev => [...prev, res.data]);
       setProjectForm({
-        name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
+        name: '', 
+        description: '', 
+        startDate: '', 
+        endDate: '', 
+        managerId: '', 
+        teamMembers: [], 
+        status: 'Planning'
       });
       setShowProjectModal(false);
+      showSnackbar('Project created successfully');
     } catch (e) {
-      setError('Failed to create project');
-      console.error(e);
+      const errorMsg = e.response?.data?.message || 'Failed to create project';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error creating project:', e);
     }
   };
 
@@ -158,7 +206,7 @@ const Projects = () => {
       startDate: project.startDate,
       endDate: project.endDate,
       managerId: project.managerId,
-      teamMembers: project.teamMembers,
+      teamMembers: project.teamMembers || [],
       status: project.status
     });
     setShowEditModal(true);
@@ -176,11 +224,20 @@ const Projects = () => {
       setShowEditModal(false);
       setSelectedProject(null);
       setProjectForm({
-        name: '', description: '', startDate: '', endDate: '', managerId: '', teamMembers: [], status: 'Planning'
+        name: '', 
+        description: '', 
+        startDate: '', 
+        endDate: '', 
+        managerId: '', 
+        teamMembers: [], 
+        status: 'Planning'
       });
+      showSnackbar('Project updated successfully');
     } catch (e) {
-      setError('Failed to update project');
-      console.error(e);
+      const errorMsg = e.response?.data?.message || 'Failed to update project';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error updating project:', e);
     }
   };
 
@@ -189,16 +246,55 @@ const Projects = () => {
     try {
       const updatedProject = {
         ...selectedProject,
-        teamMembers: [...new Set([...selectedProject.teamMembers, ...newMembers])]
+        teamMembers: [...new Set([...(selectedProject.teamMembers || []), ...newMembers])]
       };
       const res = await updateProject(selectedProject.id, updatedProject);
       setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
       setSelectedProject(res.data);
       setNewMembers([]);
       setShowAddMemberModal(false);
+      showSnackbar('Members added successfully');
     } catch (e) {
-      setError('Failed to add members');
-      console.error(e);
+      const errorMsg = e.response?.data?.message || 'Failed to add members';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error adding members:', e);
+    }
+  };
+
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    try {
+      const newTask = {
+        id: Date.now(),
+        ...taskForm,
+        createdAt: new Date().toISOString().split('T')[0]
+      };
+      
+      const updatedProject = {
+        ...selectedProject,
+        tasks: [...(selectedProject.tasks || []), newTask]
+      };
+      
+      const res = await updateProject(selectedProject.id, updatedProject);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
+      setSelectedProject(res.data);
+      setTaskForm({
+        name: '', 
+        description: '', 
+        assignedTo: '', 
+        teamId: '', 
+        deadline: '', 
+        estimatedHours: '', 
+        status: 'To Do'
+      });
+      setShowAddTaskModal(false);
+      showSnackbar('Task added successfully');
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || 'Failed to add task';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error adding task:', e);
     }
   };
 
@@ -214,9 +310,12 @@ const Projects = () => {
       if (selectedProject?.id === projectId) {
         setSelectedProject(res.data);
       }
+      showSnackbar('Project marked as completed');
     } catch (e) {
-      setError('Failed to mark project as complete');
-      console.error(e);
+      const errorMsg = e.response?.data?.message || 'Failed to mark project as complete';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error marking project complete:', e);
     }
   };
 
@@ -246,17 +345,27 @@ const Projects = () => {
   const getAvailableEmployees = () => {
     if (!selectedProject) return [];
     return employees.filter(e => 
-      e.role === 'employee' && 
+      e.role?.toLowerCase() === 'employee' && 
       !selectedProject.teamMembers?.includes(e.id)
     );
   };
 
-  if (loadingProjects || loadingEmployees) {
-    return <Typography variant="h6" textAlign="center" mt={5}>Loading data...</Typography>;
-  }
+  const getAssignableMembers = () => {
+    if (!selectedProject) return [];
+    const manager = getProjectManager(selectedProject);
+    const teamMembers = getTeamMembers(selectedProject);
+    return manager ? [manager, ...teamMembers] : teamMembers;
+  };
 
-  if (error) {
-    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+  if (loadingProjects || loadingEmployees) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <Box textAlign="center">
+          <LinearProgress sx={{ width: 200, mb: 2 }} />
+          <Typography variant="h6">Loading projects...</Typography>
+        </Box>
+      </Box>
+    );
   }
 
   return (
@@ -279,6 +388,12 @@ const Projects = () => {
           Create New Project
         </Button>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {projects.length === 0 ? (
         <Paper
@@ -425,6 +540,19 @@ const Projects = () => {
                           <Edit fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="Add Task">
+                        <IconButton
+                          color="secondary"
+                          onClick={() => {
+                            setSelectedProject(proj);
+                            setShowAddTaskModal(true);
+                          }}
+                          size="small"
+                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                        >
+                          <AddTask fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Add Members">
                         <IconButton
                           color="success"
@@ -536,13 +664,13 @@ const Projects = () => {
                   required
                 >
                   <MenuItem value="">Select Manager</MenuItem>
-                  {employees.filter(e => e.role === 'manager').map(manager => (
+                  {employees.filter(e => e.role?.toLowerCase() === 'manager').map(manager => (
                     <MenuItem key={manager.id} value={manager.id}>
                       {manager.name} - {manager.designation}
                     </MenuItem>
                   ))}
                 </TextField>
-                {employees.filter(e => e.role === 'manager').length === 0 && (
+                {employees.filter(e => e.role?.toLowerCase() === 'manager').length === 0 && (
                   <Alert severity="warning" sx={{ mt: 1 }}>
                     No managers available. Please add managers first.
                   </Alert>
@@ -560,13 +688,13 @@ const Projects = () => {
                     p: 2
                   }}
                 >
-                  {employees.filter(e => e.role === 'employee').length === 0 ? (
+                  {employees.filter(e => e.role?.toLowerCase() === 'employee').length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
                       No employees available to add to team
                     </Typography>
                   ) : (
                     <Grid container spacing={1}>
-                      {employees.filter(e => e.role === 'employee').map(emp => (
+                      {employees.filter(e => e.role?.toLowerCase() === 'employee').map(emp => (
                         <Grid item xs={12} key={emp.id}>
                           <FormControlLabel
                             control={
@@ -712,7 +840,7 @@ const Projects = () => {
                   required
                 >
                   <MenuItem value="">Select Manager</MenuItem>
-                  {employees.filter(e => e.role === 'manager').map(manager => (
+                  {employees.filter(e => e.role?.toLowerCase() === 'manager').map(manager => (
                     <MenuItem key={manager.id} value={manager.id}>
                       {manager.name} - {manager.designation}
                     </MenuItem>
@@ -732,7 +860,7 @@ const Projects = () => {
                   }}
                 >
                   <Grid container spacing={1}>
-                    {employees.filter(e => e.role === 'employee').map(emp => (
+                    {employees.filter(e => e.role?.toLowerCase() === 'employee').map(emp => (
                       <Grid item xs={12} key={emp.id}>
                         <FormControlLabel
                           control={
@@ -785,6 +913,160 @@ const Projects = () => {
               startIcon={<Edit />}
             >
               Update Project
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Add Task Modal */}
+      <Dialog
+        open={showAddTaskModal}
+        onClose={() => {
+          setShowAddTaskModal(false);
+          setTaskForm({
+            name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+          });
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <form onSubmit={handleAddTask}>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" fontWeight="600">
+                Add New Task
+              </Typography>
+              <IconButton onClick={() => {
+                setShowAddTaskModal(false);
+                setTaskForm({
+                  name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+                });
+              }}>
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <Divider />
+          <DialogContent>
+            {selectedProject && (
+              <>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Adding task to: <strong>{selectedProject.name}</strong>
+                </Alert>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Task Name"
+                      value={taskForm.name}
+                      onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
+                      required
+                      placeholder="Enter task name"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Description"
+                      value={taskForm.description}
+                      onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                      required
+                      placeholder="Describe the task"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Assign To"
+                      value={taskForm.assignedTo}
+                      onChange={(e) => setTaskForm({ ...taskForm, assignedTo: e.target.value })}
+                      required
+                    >
+                      <MenuItem value="">Select Member</MenuItem>
+                      {getAssignableMembers().map(member => (
+                        <MenuItem key={member.id} value={member.id}>
+                          {member.name} - {member.designation}
+                          {member.id === parseInt(selectedProject.managerId) && ' (Manager)'}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Assign to Team (Optional)"
+                      value={taskForm.teamId}
+                      onChange={(e) => setTaskForm({ ...taskForm, teamId: e.target.value })}
+                    >
+                      <MenuItem value="">No Team</MenuItem>
+                      {selectedProject.teams?.map(team => (
+                        <MenuItem key={team.id} value={team.id}>
+                          {team.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Deadline"
+                      value={taskForm.deadline}
+                      onChange={(e) => setTaskForm({ ...taskForm, deadline: e.target.value })}
+                      required
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Estimated Hours"
+                      value={taskForm.estimatedHours}
+                      onChange={(e) => setTaskForm({ ...taskForm, estimatedHours: e.target.value })}
+                      required
+                      placeholder="Enter hours"
+                      inputProps={{ min: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Status"
+                      value={taskForm.status}
+                      onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value })}
+                      required
+                    >
+                      <MenuItem value="To Do">To Do</MenuItem>
+                      <MenuItem value="In Progress">In Progress</MenuItem>
+                      <MenuItem value="Done">Done</MenuItem>
+                    </TextField>
+                  </Grid>
+                </Grid>
+              </>
+            )}
+          </DialogContent>
+          <Divider />
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => {
+              setShowAddTaskModal(false);
+              setTaskForm({
+                name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+              });
+            }}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={<AddTask />}
+            >
+              Add Task
             </Button>
           </DialogActions>
         </form>
@@ -893,7 +1175,7 @@ const Projects = () => {
         </form>
       </Dialog>
 
-      {/* View Project Details Modal */}
+      {/* View Project Details Modal - Part 1 */}
       <Dialog
         open={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
@@ -923,6 +1205,17 @@ const Projects = () => {
                   </Stack>
                 </Box>
                 <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddTask />}
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      setShowAddTaskModal(true);
+                    }}
+                    size="small"
+                  >
+                    Add Task
+                  </Button>
                   {selectedProject.status !== 'Completed' && (
                     <Button
                       variant="contained"
@@ -1162,18 +1455,31 @@ const Projects = () => {
               {/* Tasks Tab */}
               {detailsTab === 3 && (
                 <Box>
-                  <Typography variant="h6" fontWeight="600" gutterBottom>
-                    Project Tasks
-                  </Typography>
+                  <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h6" fontWeight="600">
+                      Project Tasks
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      startIcon={<AddTask />}
+                      onClick={() => {
+                        setShowDetailsModal(false);
+                        setShowAddTaskModal(true);
+                      }}
+                      size="small"
+                    >
+                      Add Task
+                    </Button>
+                  </Box>
                   <Divider sx={{ mb: 2 }} />
                   {(!selectedProject.tasks || selectedProject.tasks.length === 0) ? (
                     <Alert severity="info">
-                      No tasks assigned yet. Manager can assign tasks to team members.
+                      No tasks assigned yet. Click "Add Task" to create tasks for team members.
                     </Alert>
                   ) : (
                     <>
                       <Box mb={2}>
-                        <Stack direction="row" spacing={2}>
+                        <Stack direction="row" spacing={2} flexWrap="wrap">
                           <Chip
                             label={`Total: ${selectedProject.tasks.length}`}
                             color="default"
@@ -1282,6 +1588,18 @@ const Projects = () => {
           </>
         )}
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

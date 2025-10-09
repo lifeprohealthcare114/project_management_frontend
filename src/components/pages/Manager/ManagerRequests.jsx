@@ -1,5 +1,4 @@
-// pages/manager/Requests.jsx - Updated Version with Approval Authority
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -23,7 +22,8 @@ import {
   Tab,
   Avatar,
   Alert,
-  IconButton
+  IconButton,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -34,35 +34,93 @@ import {
   ThumbUp,
   ThumbDown
 } from '@mui/icons-material';
+import {
+  getProjectsByManager,
+  getRequestsByManager,
+  createRequest,
+  updateRequestStatus,
+  getEmployees
+} from '../../../api/api';
 
-const Requests = ({ managerId, requests, setRequests, employees, projects }) => {
+const Requests = () => {
+  const managerId = parseInt(localStorage.getItem('userId'));
+
+  const [requests, setRequests] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [requestForm, setRequestForm] = useState({
     projectId: '', equipment: '', quantity: '', reason: ''
   });
   const [tabValue, setTabValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const managerProjects = projects.filter(p => p.managerId === managerId.toString());
-  const managerRequests = requests.filter(req => 
-    managerProjects.some(p => p.id === parseInt(req.projectId))
-  );
+  useEffect(() => {
+    fetchData();
+  }, [managerId]);
 
-  const handleRequestSubmit = (e) => {
-    e.preventDefault();
-    const newRequest = {
-      id: Date.now(),
-      employeeId: managerId,
-      ...requestForm,
-      status: 'Pending',
-      requestDate: new Date().toLocaleDateString()
-    };
-    setRequests([...requests, newRequest]);
-    setRequestForm({ projectId: '', equipment: '', quantity: '', reason: '' });
+  const fetchData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [projectsRes, requestsRes, employeesRes] = await Promise.all([
+        getProjectsByManager(managerId),
+        getRequestsByManager(managerId),
+        getEmployees()
+      ]);
+
+      setProjects(projectsRes.data || []);
+      setRequests(requestsRes.data || []);
+      setEmployees(employeesRes.data || []);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRequestStatusUpdate = (requestId, newStatus) => {
-    setRequests(requests.map(req => 
-      req.id === requestId ? { ...req, status: newStatus } : req
-    ));
+  const handleRequestSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    try {
+      const newRequest = {
+        employee: { id: managerId },
+        project: { id: parseInt(requestForm.projectId) },
+        equipment: requestForm.equipment,
+        quantity: parseInt(requestForm.quantity),
+        reason: requestForm.reason
+      };
+
+      const res = await createRequest(newRequest);
+      setRequests([...requests, res.data]);
+      setRequestForm({ projectId: '', equipment: '', quantity: '', reason: '' });
+      setSuccess('Request submitted successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error creating request:', err);
+      setError('Failed to submit request');
+    }
+  };
+
+  const handleRequestStatusUpdate = async (requestId, newStatus) => {
+    setError('');
+    setSuccess('');
+
+    try {
+      await updateRequestStatus(requestId, newStatus, managerId);
+      setRequests(requests.map(req =>
+        req.id === requestId ? { ...req, status: newStatus, respondedAt: new Date().toLocaleDateString(), respondedBy: managerId } : req
+      ));
+      setSuccess(`Request ${newStatus.toLowerCase()} successfully!`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      console.error('Error updating request:', err);
+      setError('Failed to update request status');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -77,45 +135,53 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
   const stats = [
     {
       title: 'Total Requests',
-      value: managerRequests.length,
+      value: requests.length,
       icon: <Assignment />,
       color: '#1976d2',
       bgColor: '#e3f2fd'
     },
     {
       title: 'Pending',
-      value: managerRequests.filter(r => r.status === 'Pending').length,
+      value: requests.filter(r => r.status === 'Pending').length,
       icon: <Pending />,
       color: '#ed6c02',
       bgColor: '#fff3e0'
     },
     {
       title: 'Approved',
-      value: managerRequests.filter(r => r.status === 'Approved').length,
+      value: requests.filter(r => r.status === 'Approved').length,
       icon: <CheckCircle />,
       color: '#2e7d32',
       bgColor: '#e8f5e9'
     },
     {
       title: 'Rejected',
-      value: managerRequests.filter(r => r.status === 'Rejected').length,
+      value: requests.filter(r => r.status === 'Rejected').length,
       icon: <Cancel />,
       color: '#d32f2f',
       bgColor: '#ffebee'
     }
   ];
 
-  const filteredRequests = tabValue === 0 
-    ? managerRequests 
-    : tabValue === 1 
-    ? managerRequests.filter(r => r.status === 'Pending')
-    : tabValue === 2
-    ? managerRequests.filter(r => r.status === 'Approved')
-    : managerRequests.filter(r => r.status === 'Rejected');
+  const filteredRequests = tabValue === 0
+    ? requests
+    : tabValue === 1
+      ? requests.filter(r => r.status === 'Pending')
+      : tabValue === 2
+        ? requests.filter(r => r.status === 'Approved')
+        : requests.filter(r => r.status === 'Rejected');
 
   // Separate requests by requester
-  const myRequests = filteredRequests.filter(r => r.employeeId === managerId);
-  const teamRequests = filteredRequests.filter(r => r.employeeId !== managerId);
+  const myRequests = filteredRequests.filter(r => r.employee?.id === managerId);
+  const teamRequests = filteredRequests.filter(r => r.employee?.id !== managerId);
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -126,13 +192,25 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
         Create requests and approve/reject team requests for your projects
       </Typography>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess('')}>
+          {success}
+        </Alert>
+      )}
+
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
         {stats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card 
+            <Card
               elevation={0}
-              sx={{ 
+              sx={{
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 2
@@ -193,11 +271,11 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
       </Grid>
 
       {/* Create Request Form */}
-      <Paper 
+      <Paper
         elevation={0}
-        sx={{ 
-          p: 3, 
-          mb: 3, 
+        sx={{
+          p: 3,
+          mb: 3,
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2
@@ -215,21 +293,21 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                 select
                 label="Project"
                 value={requestForm.projectId}
-                onChange={(e) => setRequestForm({...requestForm, projectId: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, projectId: e.target.value })}
                 required
                 size="small"
               >
                 <MenuItem value="">Select Project</MenuItem>
-                {managerProjects.map(proj => (
+                {projects.map(proj => (
                   <MenuItem key={proj.id} value={proj.id}>
                     {proj.name}
                   </MenuItem>
                 ))}
               </TextField>
-              {managerProjects.length === 0 && (
-                <Typography variant="caption" color="warning.main">
+              {projects.length === 0 && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
                   No projects assigned to you
-                </Typography>
+                </Alert>
               )}
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -237,7 +315,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                 fullWidth
                 label="Equipment"
                 value={requestForm.equipment}
-                onChange={(e) => setRequestForm({...requestForm, equipment: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, equipment: e.target.value })}
                 placeholder="e.g., Laptop, Monitor, Software License"
                 required
                 size="small"
@@ -249,7 +327,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                 type="number"
                 label="Quantity"
                 value={requestForm.quantity}
-                onChange={(e) => setRequestForm({...requestForm, quantity: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, quantity: e.target.value })}
                 inputProps={{ min: 1 }}
                 required
                 size="small"
@@ -262,7 +340,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                 rows={3}
                 label="Reason"
                 value={requestForm.reason}
-                onChange={(e) => setRequestForm({...requestForm, reason: e.target.value})}
+                onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })}
                 placeholder="Explain why this equipment is needed"
                 required
                 size="small"
@@ -273,7 +351,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                 type="submit"
                 variant="contained"
                 startIcon={<Add />}
-                disabled={managerProjects.length === 0}
+                disabled={projects.length === 0}
               >
                 Submit Request
               </Button>
@@ -283,9 +361,9 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
       </Paper>
 
       {/* Requests List */}
-      <Paper 
+      <Paper
         elevation={0}
-        sx={{ 
+        sx={{
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2
@@ -295,19 +373,19 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
           <Typography variant="h6" fontWeight="600" gutterBottom>
             All Project Requests
           </Typography>
-          <Tabs 
-            value={tabValue} 
+          <Tabs
+            value={tabValue}
             onChange={(e, newValue) => setTabValue(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
-            <Tab label={`All (${managerRequests.length})`} />
-            <Tab label={`Pending (${managerRequests.filter(r => r.status === 'Pending').length})`} />
-            <Tab label={`Approved (${managerRequests.filter(r => r.status === 'Approved').length})`} />
-            <Tab label={`Rejected (${managerRequests.filter(r => r.status === 'Rejected').length})`} />
+            <Tab label={`All (${requests.length})`} />
+            <Tab label={`Pending (${requests.filter(r => r.status === 'Pending').length})`} />
+            <Tab label={`Approved (${requests.filter(r => r.status === 'Approved').length})`} />
+            <Tab label={`Rejected (${requests.filter(r => r.status === 'Rejected').length})`} />
           </Tabs>
         </Box>
 
-        {managerRequests.length === 0 ? (
+        {requests.length === 0 ? (
           <Box textAlign="center" py={8}>
             <Assignment sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
             <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -340,14 +418,12 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
               </TableHead>
               <TableBody>
                 {filteredRequests.map(req => {
-                  const employee = employees.find(e => e.id === parseInt(req.employeeId));
-                  const project = projects.find(p => p.id === parseInt(req.projectId));
-                  const isMyRequest = req.employeeId === managerId;
-                  
+                  const isMyRequest = req.employee?.id === managerId;
+
                   return (
-                    <TableRow 
+                    <TableRow
                       key={req.id}
-                      sx={{ 
+                      sx={{
                         '&:hover': { bgcolor: 'action.hover' },
                         '&:last-child td': { border: 0 },
                         bgcolor: isMyRequest ? 'primary.50' : 'inherit'
@@ -355,38 +431,34 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                     >
                       <TableCell>{req.requestDate}</TableCell>
                       <TableCell>
-                        {employee ? (
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Avatar sx={{ width: 32, height: 32, bgcolor: isMyRequest ? 'success.main' : 'primary.main' }}>
-                              {employee.name.charAt(0)}
-                            </Avatar>
-                            <Box>
-                              <Typography variant="body2" fontWeight="600">
-                                {employee.name} {isMyRequest && '(You)'}
-                              </Typography>
-                              <Chip 
-                                label={employee.role} 
-                                size="small" 
-                                color={employee.role === 'Manager' ? 'warning' : 'info'}
-                                variant="outlined"
-                              />
-                            </Box>
-                          </Box>
-                        ) : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        {project ? (
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Avatar sx={{ width: 32, height: 32, bgcolor: isMyRequest ? 'success.main' : 'primary.main' }}>
+                            {req.employee?.name?.charAt(0) || 'E'}
+                          </Avatar>
                           <Box>
                             <Typography variant="body2" fontWeight="600">
-                              {project.name}
+                              {req.employee?.name || 'Unknown'} {isMyRequest && '(You)'}
                             </Typography>
-                            <Chip 
-                              label={project.status} 
-                              size="small" 
+                            <Chip
+                              label={req.employee?.role || 'N/A'}
+                              size="small"
+                              color={req.employee?.role === 'manager' ? 'warning' : 'info'}
                               variant="outlined"
                             />
                           </Box>
-                        ) : 'N/A'}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" fontWeight="600">
+                            {req.project?.name || 'Unknown'}
+                          </Typography>
+                          <Chip
+                            label={req.project?.status || 'N/A'}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Box>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" fontWeight="600">
@@ -397,8 +469,8 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                         <Chip label={req.quantity} size="small" variant="outlined" />
                       </TableCell>
                       <TableCell sx={{ maxWidth: 250 }}>
-                        <Typography 
-                          variant="body2" 
+                        <Typography
+                          variant="body2"
                           color="text.secondary"
                           sx={{
                             overflow: 'hidden',
@@ -412,11 +484,16 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip 
+                        <Chip
                           label={req.status}
                           size="small"
                           color={getStatusColor(req.status)}
                         />
+                        {req.respondedAt && (
+                          <Typography variant="caption" display="block" color="text.secondary" mt={0.5}>
+                            Responded: {req.respondedAt}
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell align="center">
                         {req.status === 'Pending' && !isMyRequest ? (
@@ -425,7 +502,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                               size="small"
                               color="success"
                               onClick={() => handleRequestStatusUpdate(req.id, 'Approved')}
-                              sx={{ 
+                              sx={{
                                 border: '1px solid',
                                 borderColor: 'success.main'
                               }}
@@ -436,7 +513,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
                               size="small"
                               color="error"
                               onClick={() => handleRequestStatusUpdate(req.id, 'Rejected')}
-                              sx={{ 
+                              sx={{
                                 border: '1px solid',
                                 borderColor: 'error.main'
                               }}
@@ -467,7 +544,7 @@ const Requests = ({ managerId, requests, setRequests, employees, projects }) => 
           <strong>Action Required:</strong> You have {teamRequests.filter(r => r.status === 'Pending').length} pending request(s) from your team members awaiting your approval.
         </Alert>
       )}
-      
+
       {myRequests.filter(r => r.status === 'Pending').length > 0 && (
         <Alert severity="info" sx={{ mt: 2 }}>
           You have {myRequests.filter(r => r.status === 'Pending').length} of your own request(s) pending. Admin will review and approve/reject these requests.

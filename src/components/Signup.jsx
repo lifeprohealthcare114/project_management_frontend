@@ -15,7 +15,7 @@ const Signup = () => {
     setError("");
 
     try {
-      await API.post("/signup", formData);
+      await API.post("/auth/signup", formData);
       navigate("/"); // redirect to login
     } catch (err) {
       setError(err.response?.data?.message || "Signup failed");

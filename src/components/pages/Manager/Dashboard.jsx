@@ -1,5 +1,4 @@
-// pages/manager/Dashboard.jsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box,
   Grid,
@@ -15,7 +14,23 @@ import {
   ListItemAvatar,
   ListItemText,
   Divider,
-  Stack
+  Stack,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  IconButton,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   FolderOpen,
@@ -24,22 +39,66 @@ import {
   TrendingUp,
   CheckCircle,
   Folder,
-  Person
+  Person,
+  Close
 } from '@mui/icons-material';
+import { getProjectsByManager, getRequestsByManager, getEmployees } from '../../../api/api';
 
-const Dashboard = ({ managerId, projects, employees, requests }) => {
-  const managerProjects = projects.filter(p => p.managerId === managerId.toString());
-  
+const Dashboard = () => {
+  const managerId = parseInt(localStorage.getItem('userId'));
+  const userName = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).name : 'Manager';
+
+  const [managerProjects, setManagerProjects] = useState([]);
+  const [managerRequests, setManagerRequests] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [requestsModalOpen, setRequestsModalOpen] = useState(false);
+  const [requestFilter, setRequestFilter] = useState('All');
+
+  useEffect(() => {
+    fetchData();
+  }, [managerId]);
+
+  const fetchData = async () => {
+    if (!managerId) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const [projectsRes, requestsRes, employeesRes] = await Promise.all([
+        getProjectsByManager(managerId),
+        getRequestsByManager(managerId),
+        getEmployees()
+      ]);
+
+      setManagerProjects(projectsRes.data || []);
+      setManagerRequests(requestsRes.data || []);
+      setEmployees(employeesRes.data || []);
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const teamMemberIds = new Set();
   managerProjects.forEach(project => {
-    project.teamMembers.forEach(memberId => teamMemberIds.add(memberId));
+    if (project.teamMembers && Array.isArray(project.teamMembers)) {
+      project.teamMembers.forEach(id => teamMemberIds.add(id));
+    }
   });
   const teamMembers = employees.filter(emp => teamMemberIds.has(emp.id));
-  
-  const managerRequests = requests.filter(req => 
-    managerProjects.some(p => p.id === parseInt(req.projectId))
-  );
-  
+
+  const pendingRequests = managerRequests.filter(r => r.status === 'Pending');
+
+  const getEmployeeName = id => {
+    const emp = employees.find(e => e.id === id);
+    return emp ? emp.name : 'Unknown';
+  };
+
   const stats = [
     {
       title: 'My Projects',
@@ -57,7 +116,7 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
     },
     {
       title: 'Pending Requests',
-      value: managerRequests.filter(r => r.status === 'Pending').length,
+      value: pendingRequests.length,
       icon: <Assignment sx={{ fontSize: 40 }} />,
       color: '#ed6c02',
       bgColor: '#fff3e0'
@@ -71,14 +130,29 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
     }
   ];
 
-  const getStatusColor = (status) => {
+  const getStatusColor = status => {
     switch (status) {
       case 'Completed': return 'success';
       case 'In Progress': return 'info';
       case 'Planning': return 'warning';
+      case 'Pending': return 'warning';
+      case 'Approved': return 'success';
+      case 'Rejected': return 'error';
       default: return 'default';
     }
   };
+
+  const filteredRequests = requestFilter === 'All'
+    ? managerRequests
+    : managerRequests.filter(r => r.status === requestFilter);
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -86,24 +160,27 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
         Manager Dashboard
       </Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
-        Manage your projects and team effectively
+        Welcome back, {userName}! Here's an overview of your projects, team, and requests
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
 
       {/* Stats Cards */}
       <Grid container spacing={3} mb={4}>
         {stats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card 
+            <Card
               elevation={0}
-              sx={{ 
+              sx={{
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 2,
                 transition: 'all 0.3s',
-                '&:hover': {
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                  transform: 'translateY(-4px)'
-                }
+                '&:hover': { boxShadow: '0 4px 12px rgba(0,0,0,0.1)', transform: 'translateY(-4px)' }
               }}
             >
               <CardContent>
@@ -127,86 +204,52 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* My Projects */}
+        {/* Projects */}
         <Grid item xs={12}>
-          <Paper 
-            elevation={0}
-            sx={{ 
-              p: 3, 
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2
-            }}
-          >
-            <Box display="flex" alignItems="center" mb={2}>
-              <Folder color="primary" sx={{ mr: 1 }} />
-              <Typography variant="h6" fontWeight="600">
-                My Projects
-              </Typography>
-            </Box>
+          <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+            <Typography variant="h6" fontWeight="600" gutterBottom>My Projects</Typography>
             <Divider sx={{ mb: 2 }} />
             {managerProjects.length === 0 ? (
               <Box textAlign="center" py={4}>
                 <FolderOpen sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                <Typography color="text.secondary">
-                  No projects assigned yet
-                </Typography>
+                <Typography color="text.secondary">No projects assigned yet</Typography>
               </Box>
             ) : (
               <Grid container spacing={3}>
-                {managerProjects.map(proj => (
-                  <Grid item xs={12} md={6} key={proj.id}>
-                    <Card 
-                      variant="outlined"
-                      sx={{
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          transform: 'translateY(-2px)'
-                        }
-                      }}
-                    >
-                      <CardContent>
-                        <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
-                          <Typography variant="h6" fontWeight="600">
-                            {proj.name}
-                          </Typography>
-                          <Chip 
-                            label={proj.status}
-                            size="small"
-                            color={getStatusColor(proj.status)}
-                          />
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" mb={2}>
-                          {proj.description}
-                        </Typography>
-                        <Box display="flex" justifyContent="space-between" mb={2}>
-                          <Typography variant="caption" color="text.secondary">
-                            Team: {proj.teamMembers.length} members
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {proj.startDate} - {proj.endDate}
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
+                {managerProjects.map(proj => {
+                  const completedTasks = proj.tasks?.filter(t => t.status === 'Done').length || 0;
+                  const totalTasks = proj.tasks?.length || 0;
+                  const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+                  return (
+                    <Grid item xs={12} md={6} key={proj.id}>
+                      <Card variant="outlined" sx={{ transition: 'all 0.2s', '&:hover': { boxShadow: '0 4px 12px rgba(0,0,0,0.1)', transform: 'translateY(-2px)' } }}>
+                        <CardContent>
+                          <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                            <Typography variant="h6" fontWeight="600">{proj.name}</Typography>
+                            <Chip label={proj.status} size="small" color={getStatusColor(proj.status)} />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary" mb={2}>{proj.description}</Typography>
+                          <Box display="flex" justifyContent="space-between" mb={2}>
                             <Typography variant="caption" color="text.secondary">
-                              Progress
+                              Team: {proj.teamMembers?.length || 0} members
                             </Typography>
-                            <Typography variant="caption" fontWeight="600">
-                              {proj.progress}%
+                            <Typography variant="caption" color="text.secondary">
+                              {proj.startDate} - {proj.endDate}
                             </Typography>
                           </Box>
-                          <LinearProgress 
-                            variant="determinate" 
-                            value={proj.progress}
-                            sx={{ height: 8, borderRadius: 4 }}
-                          />
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
+                          <Box>
+                            <Box display="flex" justifyContent="space-between" mb={1}>
+                              <Typography variant="caption" color="text.secondary">Progress</Typography>
+                              <Typography variant="caption" fontWeight="600">{progress}%</Typography>
+                            </Box>
+                            <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4 }} />
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
               </Grid>
             )}
           </Paper>
@@ -214,52 +257,23 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
 
         {/* Team Members */}
         <Grid item xs={12} lg={6}>
-          <Paper 
-            elevation={0}
-            sx={{ 
-              p: 3, 
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2,
-              height: '100%'
-            }}
-          >
-            <Box display="flex" alignItems="center" mb={2}>
-              <Person color="success" sx={{ mr: 1 }} />
-              <Typography variant="h6" fontWeight="600">
-                My Team Members
-              </Typography>
-            </Box>
+          <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" fontWeight="600" gutterBottom>My Team Members</Typography>
             <Divider sx={{ mb: 2 }} />
             {teamMembers.length === 0 ? (
               <Box textAlign="center" py={4}>
                 <People sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
-                <Typography color="text.secondary">
-                  No team members assigned yet
-                </Typography>
+                <Typography color="text.secondary">No team members assigned yet</Typography>
               </Box>
             ) : (
               <List>
                 {teamMembers.slice(0, 5).map((emp, index) => (
-                  <ListItem 
-                    key={emp.id}
-                    sx={{ 
-                      px: 0,
-                      borderBottom: index !== Math.min(4, teamMembers.length - 1) ? '1px solid' : 'none',
-                      borderColor: 'divider'
-                    }}
-                  >
+                  <ListItem key={emp.id} sx={{ px: 0, borderBottom: index !== Math.min(4, teamMembers.length - 1) ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: 'success.main' }}>
-                        {emp.name.charAt(0)}
-                      </Avatar>
+                      <Avatar sx={{ bgcolor: 'success.main' }}>{emp.name.charAt(0)}</Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={
-                        <Typography variant="body1" fontWeight="600">
-                          {emp.name}
-                        </Typography>
-                      }
+                      primary={<Typography variant="body1" fontWeight="600">{emp.name}</Typography>}
                       secondary={`${emp.designation} • ${emp.department}`}
                     />
                   </ListItem>
@@ -269,59 +283,96 @@ const Dashboard = ({ managerId, projects, employees, requests }) => {
           </Paper>
         </Grid>
 
-        {/* Project Status Summary */}
+        {/* Pending Requests */}
         <Grid item xs={12} lg={6}>
-          <Paper 
-            elevation={0}
-            sx={{ 
-              p: 3, 
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 2,
-              height: '100%'
-            }}
-          >
-            <Typography variant="h6" fontWeight="600" gutterBottom>
-              Project Status Overview
-            </Typography>
-            <Divider sx={{ mb: 3 }} />
-            <Grid container spacing={2}>
-              {['Planning', 'In Progress', 'Completed'].map((status) => {
-                const count = managerProjects.filter(p => p.status === status).length;
-                return (
-                  <Grid item xs={12} key={status}>
-                    <Card 
-                      elevation={0}
-                      sx={{ 
-                        bgcolor: getStatusColor(status) + '.50',
-                        border: '1px solid',
-                        borderColor: getStatusColor(status) + '.200'
-                      }}
-                    >
-                      <CardContent>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <CheckCircle color={getStatusColor(status)} />
-                          <Typography variant="body2" fontWeight="600">
-                            {status}
-                          </Typography>
-                        </Stack>
-                        <Typography variant="h3" fontWeight="700" mt={1}>
-                          {count}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {managerProjects.length > 0 
-                            ? `${((count / managerProjects.length) * 100).toFixed(1)}%` 
-                            : '0%'} of your projects
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                );
-              })}
-            </Grid>
+          <Paper elevation={0} sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" fontWeight="600" gutterBottom>Pending Requests</Typography>
+            <Divider sx={{ mb: 2 }} />
+            {pendingRequests.length === 0 ? (
+              <Box textAlign="center" py={4}>
+                <Assignment sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+                <Typography color="text.secondary">No pending requests</Typography>
+              </Box>
+            ) : (
+              <>
+                <List>
+                  {pendingRequests.slice(0, 5).map((req, index) => (
+                    <ListItem key={req.id} sx={{ px: 0, borderBottom: index !== Math.min(4, pendingRequests.length - 1) ? '1px solid' : 'none', borderColor: 'divider' }}>
+                      <ListItemAvatar>
+                        <Avatar sx={{ bgcolor: 'warning.main' }}>{req.employee?.name?.charAt(0) || 'E'}</Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={<Typography variant="body1" fontWeight="600">{req.equipment}</Typography>}
+                        secondary={
+                          <Box mt={0.5}>
+                            <Typography variant="caption" color="text.secondary">
+                              Project: {req.project?.name || 'Unknown'} • Employee: {req.employee?.name || 'Unknown'}
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      <Chip label={req.status} size="small" color={getStatusColor(req.status)} />
+                    </ListItem>
+                  ))}
+                </List>
+                <Box textAlign="center" mt={2}>
+                  <Button variant="outlined" onClick={() => setRequestsModalOpen(true)}>View All Requests</Button>
+                </Box>
+              </>
+            )}
           </Paper>
         </Grid>
       </Grid>
+
+      {/* Requests Modal */}
+      <Dialog fullWidth maxWidth="md" open={requestsModalOpen} onClose={() => setRequestsModalOpen(false)}>
+        <DialogTitle>
+          All Requests
+          <IconButton aria-label="close" onClick={() => setRequestsModalOpen(false)} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Box mb={2}>
+            <FormControl fullWidth>
+              <InputLabel>Status Filter</InputLabel>
+              <Select value={requestFilter} onChange={e => setRequestFilter(e.target.value)} label="Status Filter">
+                <MenuItem value="All">All</MenuItem>
+                <MenuItem value="Pending">Pending</MenuItem>
+                <MenuItem value="Approved">Approved</MenuItem>
+                <MenuItem value="Rejected">Rejected</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Equipment</TableCell>
+                <TableCell>Project</TableCell>
+                <TableCell>Employee</TableCell>
+                <TableCell>Date</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filteredRequests.map(req => (
+                <TableRow key={req.id}>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight="600">{req.equipment}</Typography>
+                    <Typography variant="caption" color="text.secondary">Qty: {req.quantity}</Typography>
+                  </TableCell>
+                  <TableCell>{req.project?.name || 'Unknown'}</TableCell>
+                  <TableCell>{req.employee?.name || 'Unknown'}</TableCell>
+                  <TableCell>{req.requestDate}</TableCell>
+                  <TableCell>
+                    <Chip label={req.status} size="small" color={getStatusColor(req.status)} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

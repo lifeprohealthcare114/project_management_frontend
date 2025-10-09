@@ -27,6 +27,7 @@ import {
   InputAdornment,
   LinearProgress,
   Alert,
+  Snackbar,
 } from '@mui/material';
 import {
   Add,
@@ -42,16 +43,14 @@ import {
   Delete,
 } from '@mui/icons-material';
 
-import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '../../../api/api'; // Adjust import path
+import { getEmployees, createEmployee, updateEmployee, deleteEmployee, getProjects } from '../../../api/api';
 
-const Employees = ({ projects }) => {
+const Employees = () => {
   const [employees, setEmployees] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
-
-  // Separate modals for view and edit
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-
   const [searchTerm, setSearchTerm] = useState('');
   const [employeeForm, setEmployeeForm] = useState({
     empId: '',
@@ -64,24 +63,38 @@ const Employees = ({ projects }) => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const response = await getEmployees();
-        setEmployees(response.data || []);
-      } catch (err) {
-        setError('Failed to fetch employees');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchEmployees();
+    fetchProjects();
   }, []);
+
+  const fetchEmployees = async () => {
+    try {
+      setLoading(true);
+      const response = await getEmployees();
+      setEmployees(response.data || []);
+      setError(null);
+    } catch (err) {
+      setError('Failed to fetch employees');
+      console.error('Error fetching employees:', err);
+      showSnackbar('Failed to load employees', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const response = await getProjects();
+      setProjects(response.data || []);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+    }
+  };
 
   const resetForm = () => {
     setEmployeeForm({
@@ -95,26 +108,42 @@ const Employees = ({ projects }) => {
     });
   };
 
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
+
   const handleEmployeeSubmit = async (e) => {
     e.preventDefault();
     try {
       if (selectedEmployee) {
         // Update existing employee
-        const response = await updateEmployee(selectedEmployee.id, employeeForm);
+        const updateData = { ...employeeForm };
+        if (!updateData.password) {
+          delete updateData.password; // Don't send empty password
+        }
+        const response = await updateEmployee(selectedEmployee.id, updateData);
         setEmployees((prev) =>
           prev.map((emp) => (emp.id === selectedEmployee.id ? response.data : emp))
         );
+        showSnackbar('Employee updated successfully');
       } else {
         // Create new employee
         const response = await createEmployee(employeeForm);
         setEmployees((prev) => [...prev, response.data]);
+        showSnackbar('Employee created successfully');
       }
       resetForm();
       setShowEditModal(false);
       setSelectedEmployee(null);
     } catch (err) {
-      setError('Failed to save employee');
-      console.error(err);
+      const errorMsg = err.response?.data?.message || 'Failed to save employee';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error saving employee:', err);
     }
   };
 
@@ -132,7 +161,7 @@ const Employees = ({ projects }) => {
       designation: employee.designation || '',
       department: employee.department || '',
       role: employee.role || '',
-      password: '', // Do not prefill password
+      password: '',
     });
     setShowEditModal(true);
   };
@@ -153,9 +182,12 @@ const Employees = ({ projects }) => {
     try {
       await deleteEmployee(employeeToDelete.id);
       setEmployees((prev) => prev.filter((emp) => emp.id !== employeeToDelete.id));
+      showSnackbar('Employee deleted successfully');
     } catch (err) {
-      setError('Failed to delete employee');
-      console.error(err);
+      const errorMsg = err.response?.data?.message || 'Failed to delete employee';
+      setError(errorMsg);
+      showSnackbar(errorMsg, 'error');
+      console.error('Error deleting employee:', err);
     } finally {
       setConfirmDeleteOpen(false);
       setEmployeeToDelete(null);
@@ -169,7 +201,10 @@ const Employees = ({ projects }) => {
 
   const getEmployeeProjects = (empId) => {
     return projects.filter(
-      (project) => project.teamMembers.includes(empId) || project.managerId === empId.toString()
+      (project) => 
+        project.teamMembers?.includes(empId) || 
+        project.managerId === empId || 
+        project.managerId === empId.toString()
     );
   };
 
@@ -182,12 +217,13 @@ const Employees = ({ projects }) => {
   });
 
   const getRoleColor = (role) => {
-    switch (role) {
-      case 'Admin':
+    const roleLower = (role || '').toLowerCase();
+    switch (roleLower) {
+      case 'admin':
         return 'error';
-      case 'Manager':
+      case 'manager':
         return 'warning';
-      case 'Employee':
+      case 'employee':
         return 'info';
       default:
         return 'default';
@@ -195,11 +231,14 @@ const Employees = ({ projects }) => {
   };
 
   if (loading) {
-    return <Typography variant="h6" textAlign="center" mt={5}>Loading employees...</Typography>;
-  }
-
-  if (error) {
-    return <Typography variant="h6" color="error" textAlign="center" mt={5}>{error}</Typography>;
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <Box textAlign="center">
+          <LinearProgress sx={{ width: 200, mb: 2 }} />
+          <Typography variant="h6">Loading employees...</Typography>
+        </Box>
+      </Box>
+    );
   }
 
   return (
@@ -210,6 +249,12 @@ const Employees = ({ projects }) => {
       <Typography variant="body2" color="text.secondary" mb={3}>
         Add and manage employees across all departments
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {/* Add New Employee Button */}
       <Box mb={3}>
@@ -286,8 +331,9 @@ const Employees = ({ projects }) => {
                   >
                     <TableCell>
                       <Stack direction="row" spacing={2} alignItems="center">
-                        <Avatar sx={{ bgcolor: 'primary.main' }}>{emp.name.charAt(0)}</Avatar>
-
+                        <Avatar sx={{ bgcolor: 'primary.main' }}>
+                          {emp.name?.charAt(0) || 'E'}
+                        </Avatar>
                         <Box>
                           <Typography variant="body2" fontWeight="600">{emp.name}</Typography>
                           <Typography variant="caption" color="text.secondary">{emp.empId}</Typography>
@@ -298,20 +344,44 @@ const Employees = ({ projects }) => {
                     <TableCell>{emp.designation}</TableCell>
                     <TableCell>{emp.department}</TableCell>
                     <TableCell>
-                      <Chip label={emp.role} size="small" color={getRoleColor(emp.role)} />
+                      <Chip 
+                        label={emp.role} 
+                        size="small" 
+                        color={getRoleColor(emp.role)} 
+                      />
                     </TableCell>
                     <TableCell>
-                      <Chip label={`${getEmployeeProjects(emp.id).length} Projects`} size="small" variant="outlined" color="info" />
+                      <Chip 
+                        label={`${getEmployeeProjects(emp.id).length} Projects`} 
+                        size="small" 
+                        variant="outlined" 
+                        color="info" 
+                      />
                     </TableCell>
                     <TableCell align="center">
                       <Stack direction="row" spacing={1} justifyContent="center">
-                        <IconButton size="small" color="primary" title="View Details" onClick={() => handleViewClick(emp)}>
+                        <IconButton 
+                          size="small" 
+                          color="primary" 
+                          title="View Details" 
+                          onClick={() => handleViewClick(emp)}
+                        >
                           <Visibility />
                         </IconButton>
-                        <IconButton size="small" color="warning" title="Edit Employee" onClick={() => handleEditClick(emp)}>
+                        <IconButton 
+                          size="small" 
+                          color="warning" 
+                          title="Edit Employee" 
+                          onClick={() => handleEditClick(emp)}
+                        >
                           <Edit />
                         </IconButton>
-                        <IconButton size="small" color="error" title="Delete Employee" onClick={() => handleDeleteClick(emp)}>
+                        <IconButton 
+                          size="small" 
+                          color="error" 
+                          title="Delete Employee" 
+                          onClick={() => handleDeleteClick(emp)}
+                        >
                           <Delete />
                         </IconButton>
                       </Stack>
@@ -332,7 +402,7 @@ const Employees = ({ projects }) => {
               <Box display="flex" justifyContent="space-between" alignItems="center">
                 <Box display="flex" alignItems="center" gap={2}>
                   <Avatar sx={{ bgcolor: 'primary.main', width: 56, height: 56 }}>
-                    {selectedEmployee.name.charAt(0)}
+                    {selectedEmployee.name?.charAt(0) || 'E'}
                   </Avatar>
                   <Box>
                     <Typography variant="h6" fontWeight="600">{selectedEmployee.name}</Typography>
@@ -348,9 +418,13 @@ const Employees = ({ projects }) => {
             </DialogTitle>
             <Divider />
             <DialogContent>
-              <Typography variant="subtitle1" fontWeight="600" gutterBottom>Assigned Projects</Typography>
+              <Typography variant="subtitle1" fontWeight="600" gutterBottom>
+                Assigned Projects
+              </Typography>
               {getEmployeeProjects(selectedEmployee.id).length === 0 ? (
-                <Alert severity="info" sx={{ mt: 2 }}>No projects assigned to this employee yet</Alert>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  No projects assigned to this employee yet
+                </Alert>
               ) : (
                 <Stack spacing={2} mt={2}>
                   {getEmployeeProjects(selectedEmployee.id).map((proj) => (
@@ -359,7 +433,9 @@ const Employees = ({ projects }) => {
                         <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
                           <Box>
                             <Typography variant="subtitle1" fontWeight="600">{proj.name}</Typography>
-                            <Typography variant="body2" color="text.secondary">{proj.description}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {proj.description}
+                            </Typography>
                             <Typography variant="caption" color="text.secondary" display="block" mt={1}>
                               {proj.startDate} to {proj.endDate}
                             </Typography>
@@ -367,15 +443,11 @@ const Employees = ({ projects }) => {
                           <Chip
                             label={proj.status}
                             size="small"
-                            color={proj.status === "Completed" ? "success" : proj.status === "In Progress" ? "info" : "default"}
+                            color={
+                              proj.status === "Completed" ? "success" : 
+                              proj.status === "In Progress" ? "info" : "default"
+                            }
                           />
-                        </Box>
-                        <Box>
-                          <Box display="flex" justifyContent="space-between" mb={1}>
-                            <Typography variant="caption" color="text.secondary">Progress</Typography>
-                            <Typography variant="caption" fontWeight="600">{proj.progress}%</Typography>
-                          </Box>
-                          <LinearProgress variant="determinate" value={proj.progress} sx={{ height: 8, borderRadius: 4 }} />
                         </Box>
                       </CardContent>
                     </Card>
@@ -384,18 +456,29 @@ const Employees = ({ projects }) => {
               )}
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 3 }}>
-              <Button variant="contained" onClick={() => setShowViewModal(false)}>Close</Button>
+              <Button variant="contained" onClick={() => setShowViewModal(false)}>
+                Close
+              </Button>
             </DialogActions>
           </>
         )}
       </Dialog>
 
       {/* Edit Employee Modal */}
-      <Dialog open={showEditModal} onClose={() => { setShowEditModal(false); resetForm(); setSelectedEmployee(null); }} maxWidth="md" fullWidth>
+      <Dialog 
+        open={showEditModal} 
+        onClose={() => { 
+          setShowEditModal(false); 
+          resetForm(); 
+          setSelectedEmployee(null); 
+        }} 
+        maxWidth="md" 
+        fullWidth
+      >
         <DialogTitle>{selectedEmployee ? "Edit Employee" : "Add New Employee"}</DialogTitle>
         <Divider />
         <DialogContent>
-          <form onSubmit={handleEmployeeSubmit}>
+          <form onSubmit={handleEmployeeSubmit} id="employee-form">
             <Grid container spacing={2} sx={{ pt: 1 }}>
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
@@ -474,9 +557,9 @@ const Employees = ({ projects }) => {
                   required
                   size="small"
                 >
-                  <MenuItem value="Admin">Admin</MenuItem>
-                  <MenuItem value="Manager">Manager</MenuItem>
-                  <MenuItem value="Employee">Employee</MenuItem>
+                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="manager">Manager</MenuItem>
+                  <MenuItem value="employee">Employee</MenuItem>
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
@@ -491,26 +574,25 @@ const Employees = ({ projects }) => {
                   helperText={selectedEmployee ? "Leave blank to keep current password" : ""}
                 />
               </Grid>
-              <Grid item xs={12} display="flex" justifyContent="flex-end" spacing={2}>
-                <Stack direction="row" spacing={2}>
-                  <Button type="submit" variant="contained">
-                    {selectedEmployee ? "Update" : "Add"}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      resetForm();
-                      setSelectedEmployee(null);
-                      setShowEditModal(false);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </Stack>
-              </Grid>
             </Grid>
           </form>
         </DialogContent>
+        <Divider />
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              resetForm();
+              setSelectedEmployee(null);
+              setShowEditModal(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" form="employee-form" variant="contained">
+            {selectedEmployee ? "Update" : "Add"}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
@@ -518,7 +600,7 @@ const Employees = ({ projects }) => {
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
           Are you sure you want to delete employee{' '}
-          <strong>{employeeToDelete?.name}</strong>?
+          <strong>{employeeToDelete?.name}</strong>? This action cannot be undone.
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCancelDelete}>Cancel</Button>
@@ -527,6 +609,18 @@ const Employees = ({ projects }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

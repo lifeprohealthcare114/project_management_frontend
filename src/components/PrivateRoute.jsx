@@ -9,8 +9,8 @@ const PrivateRoute = ({ children, role }) => {
   // If no token, redirect to login
   if (!token) return <Navigate to="/" replace />;
 
-  // If role is specified and doesn't match, redirect to login
-  if (role && role !== userRole) return <Navigate to="/" replace />;
+  // Normalize both role and userRole to lowercase
+  if (role && role.toLowerCase() !== userRole?.toLowerCase()) return <Navigate to="/" replace />;
 
   // If all good, render children (the protected component)
   return children;
