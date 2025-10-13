@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// FILE: src/pages/Projects.jsx
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Grid,
@@ -36,7 +37,11 @@ import {
   Tooltip,
   Snackbar,
   LinearProgress,
-} from '@mui/material';
+  InputAdornment,
+  Select,
+  FormControl,
+  InputLabel,
+} from "@mui/material";
 import {
   Add,
   FolderOpen,
@@ -51,55 +56,127 @@ import {
   CheckCircle,
   AccessTime,
   Warning,
-  AddTask
-} from '@mui/icons-material';
+  AddTask,
+  Search,
+  FilterList,
+  Delete,
+} from "@mui/icons-material";
 
-import { 
-  getProjects, 
-  createProject, 
-  updateProject, 
+import {
+  getProjects,
+  createProject,
+  updateProject,
+  deleteProject,
   getEmployees,
-  deleteProject 
-} from '../../../api/api';
+  createTask,
+  updateTask,
+  deleteTask,
+  getTasksByProject,
+} from "../../../api/api";
 
 const Projects = () => {
   const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [showEditTaskModal, setShowEditTaskModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [detailsTab, setDetailsTab] = useState(0);
   const [projectForm, setProjectForm] = useState({
-    name: '', 
-    description: '', 
-    startDate: '', 
-    endDate: '', 
-    managerId: '', 
-    teamMembers: [], 
-    status: 'Planning'
+    name: "",
+    description: "",
+    startDate: "",
+    endDate: "",
+    managerId: "",
+    teamMembers: [],
+    status: "Planning",
   });
   const [taskForm, setTaskForm] = useState({
-    name: '', 
-    description: '', 
-    assignedTo: '', 
-    teamId: '', 
-    deadline: '', 
-    estimatedHours: '', 
-    status: 'To Do'
+    name: "",
+    description: "",
+    assignedTo: "",
+    teamId: "",
+    deadline: "",
+    estimatedHours: "",
+    status: "To Do",
   });
   const [newMembers, setNewMembers] = useState([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [error, setError] = useState(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
+  // Search and Filter States
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [timelineFilter, setTimelineFilter] = useState("All");
+  const [managerFilter, setManagerFilter] = useState("All");
 
   useEffect(() => {
     fetchProjects();
     fetchEmployees();
   }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [projects, searchQuery, statusFilter, timelineFilter, managerFilter]);
+
+  const applyFilters = () => {
+    let filtered = [...projects];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (proj) =>
+          proj.name.toLowerCase().includes(query) ||
+          proj.description.toLowerCase().includes(query) ||
+          getProjectManager(proj)?.name.toLowerCase().includes(query)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== "All") {
+      filtered = filtered.filter((proj) => proj.status === statusFilter);
+    }
+
+    // Timeline filter
+    if (timelineFilter !== "All") {
+      filtered = filtered.filter((proj) => {
+        const timeline = getTimelineStatus(
+          proj.startDate,
+          proj.endDate,
+          proj.status
+        );
+        return timeline.label === timelineFilter;
+      });
+    }
+
+    // Manager filter
+    if (managerFilter !== "All") {
+      filtered = filtered.filter(
+        (proj) => String(proj.managerId) === String(managerFilter)
+      );
+    }
+
+    setFilteredProjects(filtered);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("All");
+    setTimelineFilter("All");
+    setManagerFilter("All");
+  };
 
   const fetchProjects = async () => {
     try {
@@ -108,10 +185,10 @@ const Projects = () => {
       setProjects(res.data || []);
       setError(null);
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to load projects';
+      const errorMsg = e.response?.data?.message || "Failed to load projects";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error fetching projects:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error fetching projects:", e);
     } finally {
       setLoadingProjects(false);
     }
@@ -123,15 +200,15 @@ const Projects = () => {
       const res = await getEmployees();
       setEmployees(res.data || []);
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to load employees';
-      console.error('Error fetching employees:', e);
-      showSnackbar(errorMsg, 'error');
+      const errorMsg = e.response?.data?.message || "Failed to load employees";
+      console.error("Error fetching employees:", e);
+      showSnackbar(errorMsg, "error");
     } finally {
       setLoadingEmployees(false);
     }
   };
 
-  const showSnackbar = (message, severity = 'success') => {
+  const showSnackbar = (message, severity = "success") => {
     setSnackbar({ open: true, message, severity });
   };
 
@@ -143,29 +220,29 @@ const Projects = () => {
     const today = new Date();
     const start = new Date(startDate);
     const end = new Date(endDate);
-    
-    if (status === 'Completed') {
-      return { label: 'Completed', color: 'success', icon: <CheckCircle /> };
+
+    if (status === "Completed") {
+      return { label: "Completed", color: "success", icon: <CheckCircle /> };
     }
-    
+
     if (today > end) {
-      return { label: 'Overdue', color: 'error', icon: <Warning /> };
+      return { label: "Overdue", color: "error", icon: <Warning /> };
     }
-    
+
     if (today < start) {
-      return { label: 'Not Started', color: 'default', icon: <AccessTime /> };
+      return { label: "Not Started", color: "default", icon: <AccessTime /> };
     }
-    
+
     const totalDuration = end - start;
     const elapsed = today - start;
     const percentElapsed = (elapsed / totalDuration) * 100;
-    
+
     if (percentElapsed < 50) {
-      return { label: 'On Track', color: 'success', icon: <CheckCircle /> };
+      return { label: "On Track", color: "success", icon: <CheckCircle /> };
     } else if (percentElapsed < 80) {
-      return { label: 'In Progress', color: 'info', icon: <AccessTime /> };
+      return { label: "In Progress", color: "info", icon: <AccessTime /> };
     } else {
-      return { label: 'Near Deadline', color: 'warning', icon: <Warning /> };
+      return { label: "Near Deadline", color: "warning", icon: <Warning /> };
     }
   };
 
@@ -175,26 +252,26 @@ const Projects = () => {
       const newProject = {
         ...projectForm,
         teams: [],
-        tasks: []
+        tasks: [],
       };
       const res = await createProject(newProject);
-      setProjects(prev => [...prev, res.data]);
+      setProjects((prev) => [...prev, res.data]);
       setProjectForm({
-        name: '', 
-        description: '', 
-        startDate: '', 
-        endDate: '', 
-        managerId: '', 
-        teamMembers: [], 
-        status: 'Planning'
+        name: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        managerId: "",
+        teamMembers: [],
+        status: "Planning",
       });
       setShowProjectModal(false);
-      showSnackbar('Project created successfully');
+      showSnackbar("Project created successfully");
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to create project';
+      const errorMsg = e.response?.data?.message || "Failed to create project";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error creating project:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error creating project:", e);
     }
   };
 
@@ -205,9 +282,9 @@ const Projects = () => {
       description: project.description,
       startDate: project.startDate,
       endDate: project.endDate,
-      managerId: project.managerId,
+      managerId: String(project.managerId),
       teamMembers: project.teamMembers || [],
-      status: project.status
+      status: project.status,
     });
     setShowEditModal(true);
   };
@@ -217,27 +294,41 @@ const Projects = () => {
     try {
       const updatedProject = {
         ...selectedProject,
-        ...projectForm
+        ...projectForm,
       };
       const res = await updateProject(selectedProject.id, updatedProject);
-      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? res.data : p))
+      );
       setShowEditModal(false);
       setSelectedProject(null);
       setProjectForm({
-        name: '', 
-        description: '', 
-        startDate: '', 
-        endDate: '', 
-        managerId: '', 
-        teamMembers: [], 
-        status: 'Planning'
+        name: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+        managerId: "",
+        teamMembers: [],
+        status: "Planning",
       });
-      showSnackbar('Project updated successfully');
+      showSnackbar("Project updated successfully");
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to update project';
+      const errorMsg = e.response?.data?.message || "Failed to update project";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error updating project:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error updating project:", e);
+    }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm("Are you sure you want to delete this project?")) return;
+    try {
+      await deleteProject(projectId);
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      showSnackbar("Project deleted successfully");
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || "Failed to delete project";
+      showSnackbar(errorMsg, "error");
     }
   };
 
@@ -246,19 +337,23 @@ const Projects = () => {
     try {
       const updatedProject = {
         ...selectedProject,
-        teamMembers: [...new Set([...(selectedProject.teamMembers || []), ...newMembers])]
+        teamMembers: [
+          ...new Set([...(selectedProject.teamMembers || []), ...newMembers]),
+        ],
       };
       const res = await updateProject(selectedProject.id, updatedProject);
-      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? res.data : p))
+      );
       setSelectedProject(res.data);
       setNewMembers([]);
       setShowAddMemberModal(false);
-      showSnackbar('Members added successfully');
+      showSnackbar("Members added successfully");
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to add members';
+      const errorMsg = e.response?.data?.message || "Failed to add members";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error adding members:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error adding members:", e);
     }
   };
 
@@ -266,56 +361,149 @@ const Projects = () => {
     e.preventDefault();
     try {
       const newTask = {
-        id: Date.now(),
-        ...taskForm,
-        createdAt: new Date().toISOString().split('T')[0]
+        name: taskForm.name,
+        description: taskForm.description,
+        assignedTo: parseInt(taskForm.assignedTo),
+        deadline: taskForm.deadline,
+        estimatedHours: parseInt(taskForm.estimatedHours),
+        status: taskForm.status,
+        projectId: selectedProject.id,
       };
-      
+
+      const res = await createTask(newTask);
+
+      // Refresh project tasks
       const updatedProject = {
         ...selectedProject,
-        tasks: [...(selectedProject.tasks || []), newTask]
+        tasks: [...(selectedProject.tasks || []), res.data],
       };
-      
-      const res = await updateProject(selectedProject.id, updatedProject);
-      setProjects(prev => prev.map(p => p.id === selectedProject.id ? res.data : p));
-      setSelectedProject(res.data);
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? updatedProject : p))
+      );
+      setSelectedProject(updatedProject);
+
       setTaskForm({
-        name: '', 
-        description: '', 
-        assignedTo: '', 
-        teamId: '', 
-        deadline: '', 
-        estimatedHours: '', 
-        status: 'To Do'
+        name: "",
+        description: "",
+        assignedTo: "",
+        teamId: "",
+        deadline: "",
+        estimatedHours: "",
+        status: "To Do",
       });
       setShowAddTaskModal(false);
-      showSnackbar('Task added successfully');
+      showSnackbar("Task added successfully");
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to add task';
+      const errorMsg = e.response?.data?.message || "Failed to add task";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error adding task:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error adding task:", e);
+    }
+  };
+
+  const handleEditTask = (task) => {
+    setSelectedTask(task);
+    setTaskForm({
+      name: task.name,
+      description: task.description,
+      assignedTo: String(task.assignedTo),
+      teamId: task.teamId || "",
+      deadline: task.deadline,
+      estimatedHours: String(task.estimatedHours),
+      status: task.status,
+    });
+    setShowEditTaskModal(true);
+  };
+
+  const handleUpdateTask = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedTaskData = {
+        ...selectedTask,
+        name: taskForm.name,
+        description: taskForm.description,
+        assignedTo: parseInt(taskForm.assignedTo),
+        deadline: taskForm.deadline,
+        estimatedHours: parseInt(taskForm.estimatedHours),
+        status: taskForm.status,
+      };
+
+      const res = await updateTask(selectedTask.id, updatedTaskData);
+
+      const updatedProject = {
+        ...selectedProject,
+        tasks: selectedProject.tasks.map((t) =>
+          t.id === selectedTask.id ? res.data : t
+        ),
+      };
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? updatedProject : p))
+      );
+      setSelectedProject(updatedProject);
+
+      setShowEditTaskModal(false);
+      setSelectedTask(null);
+      setTaskForm({
+        name: "",
+        description: "",
+        assignedTo: "",
+        teamId: "",
+        deadline: "",
+        estimatedHours: "",
+        status: "To Do",
+      });
+      showSnackbar("Task updated successfully");
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || "Failed to update task";
+      showSnackbar(errorMsg, "error");
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
+    try {
+      await deleteTask(taskId);
+
+      const updatedProject = {
+        ...selectedProject,
+        tasks: selectedProject.tasks.filter((t) => t.id !== taskId),
+      };
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === selectedProject.id ? updatedProject : p))
+      );
+      setSelectedProject(updatedProject);
+
+      showSnackbar("Task deleted successfully");
+    } catch (e) {
+      const errorMsg = e.response?.data?.message || "Failed to delete task";
+      showSnackbar(errorMsg, "error");
     }
   };
 
   const handleMarkComplete = async (projectId) => {
     try {
-      const project = projects.find(p => p.id === projectId);
+      const project = projects.find((p) => p.id === projectId);
       const updatedProject = {
         ...project,
-        status: 'Completed'
+        status: "Completed",
       };
       const res = await updateProject(projectId, updatedProject);
-      setProjects(prev => prev.map(p => p.id === projectId ? res.data : p));
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? res.data : p))
+      );
       if (selectedProject?.id === projectId) {
         setSelectedProject(res.data);
       }
-      showSnackbar('Project marked as completed');
+      showSnackbar("Project marked as completed");
     } catch (e) {
-      const errorMsg = e.response?.data?.message || 'Failed to mark project as complete';
+      const errorMsg =
+        e.response?.data?.message || "Failed to mark project as complete";
       setError(errorMsg);
-      showSnackbar(errorMsg, 'error');
-      console.error('Error marking project complete:', e);
+      showSnackbar(errorMsg, "error");
+      console.error("Error marking project complete:", e);
     }
   };
 
@@ -325,28 +513,32 @@ const Projects = () => {
     setDetailsTab(0);
   };
 
-  const getProjectManager = (project) => {
-    return employees.find(emp => emp.id === parseInt(project.managerId));
-  };
+const getProjectManager = (project) => project?.manager || null;
+
 
   const getTeamMembers = (project) => {
-    return employees.filter(emp => project.teamMembers?.includes(emp.id));
+    return employees.filter((emp) => project.teamMembers?.includes(emp.id));
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Completed': return 'success';
-      case 'In Progress': return 'info';
-      case 'Planning': return 'warning';
-      default: return 'default';
+      case "Completed":
+        return "success";
+      case "In Progress":
+        return "info";
+      case "Planning":
+        return "warning";
+      default:
+        return "default";
     }
   };
 
   const getAvailableEmployees = () => {
     if (!selectedProject) return [];
-    return employees.filter(e => 
-      e.role?.toLowerCase() === 'employee' && 
-      !selectedProject.teamMembers?.includes(e.id)
+    return employees.filter(
+      (e) =>
+        e.role?.toLowerCase() === "employee" &&
+        !selectedProject.teamMembers?.includes(e.id)
     );
   };
 
@@ -357,9 +549,33 @@ const Projects = () => {
     return manager ? [manager, ...teamMembers] : teamMembers;
   };
 
+const getUniqueManagers = () => {
+  // Extract all manager objects from projects
+  const managers = projects
+    .map((p) => p.manager)  
+    .filter(Boolean);        
+
+  // Remove duplicates by id
+  const uniqueManagers = [];
+  const ids = new Set();
+  managers.forEach((mgr) => {
+    if (!ids.has(mgr.id)) {
+      uniqueManagers.push(mgr);
+      ids.add(mgr.id);
+    }
+  });
+
+  return uniqueManagers;
+};
+
   if (loadingProjects || loadingEmployees) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        minHeight="400px"
+      >
         <Box textAlign="center">
           <LinearProgress sx={{ width: 200, mb: 2 }} />
           <Typography variant="h6">Loading projects...</Typography>
@@ -370,7 +586,15 @@ const Projects = () => {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} flexWrap="wrap" gap={2}>
+      {/* Header and Create Button */}
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={3}
+        flexWrap="wrap"
+        gap={2}
+      >
         <Box>
           <Typography variant="h4" fontWeight="600" color="primary.main">
             Project Management
@@ -395,59 +619,174 @@ const Projects = () => {
         </Alert>
       )}
 
-      {projects.length === 0 ? (
+      {/* Search and Filters */}
+      <Paper
+        elevation={0}
+        sx={{ p: 2, mb: 3, border: "1px solid", borderColor: "divider" }}
+      >
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                ),
+              }}
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <MenuItem value="All">All Status</MenuItem>
+                <MenuItem value="Planning">Planning</MenuItem>
+                <MenuItem value="In Progress">In Progress</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Timeline</InputLabel>
+              <Select
+                value={timelineFilter}
+                label="Timeline"
+                onChange={(e) => setTimelineFilter(e.target.value)}
+              >
+                <MenuItem value="All">All Timeline</MenuItem>
+                <MenuItem value="Not Started">Not Started</MenuItem>
+                <MenuItem value="On Track">On Track</MenuItem>
+                <MenuItem value="In Progress">In Progress</MenuItem>
+                <MenuItem value="Near Deadline">Near Deadline</MenuItem>
+                <MenuItem value="Overdue">Overdue</MenuItem>
+                <MenuItem value="Completed">Completed</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+      <Grid item xs={12} sm={6} md={2}>
+  <FormControl fullWidth size="small">
+    <InputLabel>Manager</InputLabel>
+    <Select
+      value={managerFilter}
+      label="Manager"
+      onChange={(e) => setManagerFilter(e.target.value)}
+    >
+      <MenuItem value="All">All Managers</MenuItem>
+      {getUniqueManagers().map((manager) => (
+        <MenuItem key={manager.id} value={manager.id}>
+          {manager.name}
+        </MenuItem>
+      ))}
+    </Select>
+  </FormControl>
+</Grid>
+          <Grid item xs={12} sm={6} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={clearFilters}
+              startIcon={<FilterList />}
+            >
+              Clear Filters
+            </Button>
+          </Grid>
+        </Grid>
+        <Box mt={2}>
+          <Typography variant="body2" color="text.secondary">
+            Showing {filteredProjects.length} of {projects.length} projects
+          </Typography>
+        </Box>
+      </Paper>
+
+      {/* Projects List */}
+      {filteredProjects.length === 0 ? (
         <Paper
           elevation={0}
           sx={{
             p: 8,
-            textAlign: 'center',
-            border: '2px dashed',
-            borderColor: 'divider',
-            borderRadius: 2
+            textAlign: "center",
+            border: "2px dashed",
+            borderColor: "divider",
+            borderRadius: 2,
           }}
         >
-          <FolderOpen sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
+          <FolderOpen sx={{ fontSize: 80, color: "text.disabled", mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
-            No projects created yet
+            {projects.length === 0
+              ? "No projects created yet"
+              : "No projects match your filters"}
           </Typography>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            Start by creating your first project
+            {projects.length === 0
+              ? "Start by creating your first project"
+              : "Try adjusting your search or filters"}
           </Typography>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setShowProjectModal(true)}
-          >
-            Create Your First Project
-          </Button>
+          {projects.length === 0 ? (
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setShowProjectModal(true)}
+            >
+              Create Your First Project
+            </Button>
+          ) : (
+            <Button
+              variant="outlined"
+              startIcon={<FilterList />}
+              onClick={clearFilters}
+            >
+              Clear All Filters
+            </Button>
+          )}
         </Paper>
       ) : (
         <Grid container spacing={3}>
-          {projects.map(proj => {
-            const manager = getProjectManager(proj);
-            const timelineStatus = getTimelineStatus(proj.startDate, proj.endDate, proj.status);
-            const completedTasks = proj.tasks?.filter(t => t.status === 'Done').length || 0;
+      {filteredProjects.map((proj) => {
+  const manager = getProjectManager(proj);
+  const timelineStatus = getTimelineStatus(
+    proj.startDate,
+    proj.endDate,
+    proj.status
+  );
+            const completedTasks =
+              proj.tasks?.filter((t) => t.status === "Done").length || 0;
             const totalTasks = proj.tasks?.length || 0;
-            
+
             return (
               <Grid item xs={12} md={6} lg={4} key={proj.id}>
                 <Card
                   elevation={0}
                   sx={{
-                    height: '100%',
-                    border: '1px solid',
-                    borderColor: 'divider',
+                    height: "100%",
+                    border: "1px solid",
+                    borderColor: "divider",
                     borderRadius: 2,
-                    transition: 'all 0.3s',
-                    '&:hover': {
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                      transform: 'translateY(-4px)'
-                    }
+                    transition: "all 0.3s",
+                    "&:hover": {
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                      transform: "translateY(-4px)",
+                    },
                   }}
                 >
                   <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
-                      <Avatar sx={{ bgcolor: 'primary.main' }}>
+                    <Box
+                      display="flex"
+                      justifyContent="space-between"
+                      alignItems="start"
+                      mb={2}
+                    >
+                      <Avatar sx={{ bgcolor: "primary.main" }}>
                         <FolderOpen />
                       </Avatar>
                       <Stack direction="row" spacing={1}>
@@ -476,12 +815,12 @@ const Projects = () => {
                       color="text.secondary"
                       mb={2}
                       sx={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        display: "-webkit-box",
                         WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        minHeight: 40
+                        WebkitBoxOrient: "vertical",
+                        minHeight: 40,
                       }}
                     >
                       {proj.description}
@@ -491,29 +830,32 @@ const Projects = () => {
 
                     <Stack spacing={1.5}>
                       <Box display="flex" alignItems="center" gap={1}>
-                        <Person sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        <Person sx={{ fontSize: 18, color: "text.secondary" }} />
                         <Typography variant="body2" color="text.secondary">
-                          Manager: <strong>{manager ? manager.name : 'N/A'}</strong>
+                          Manager: <strong>{manager ? manager.name : "Not Assigned"}</strong>
                         </Typography>
                       </Box>
 
                       <Box display="flex" alignItems="center" gap={1}>
-                        <Group sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        <Group sx={{ fontSize: 18, color: "text.secondary" }} />
                         <Typography variant="body2" color="text.secondary">
-                          Team: <strong>{(proj.teamMembers?.length || 0) + 1} members</strong>
+                          Team:{" "}
+                          <strong>
+                            {(proj.teamMembers?.length || 0) + (manager ? 1 : 0)} members
+                          </strong>
                         </Typography>
                       </Box>
 
                       <Box display="flex" alignItems="center" gap={1}>
-                        <Assignment sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        <Assignment sx={{ fontSize: 18, color: "text.secondary" }} />
                         <Typography variant="body2" color="text.secondary">
                           Tasks: <strong>{completedTasks}/{totalTasks}</strong>
-                          {totalTasks > 0 && ` (${Math.round((completedTasks/totalTasks)*100)}%)`}
+                          {totalTasks > 0 && ` (${Math.round((completedTasks / totalTasks) * 100)}%)`}
                         </Typography>
                       </Box>
 
                       <Box display="flex" alignItems="center" gap={1}>
-                        <CalendarToday sx={{ fontSize: 18, color: 'text.secondary' }} />
+                        <CalendarToday sx={{ fontSize: 18, color: "text.secondary" }} />
                         <Typography variant="body2" color="text.secondary">
                           {proj.startDate} - {proj.endDate}
                         </Typography>
@@ -535,7 +877,7 @@ const Projects = () => {
                           color="primary"
                           onClick={() => handleEditProject(proj)}
                           size="small"
-                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                          sx={{ border: "1px solid", borderColor: "divider" }}
                         >
                           <Edit fontSize="small" />
                         </IconButton>
@@ -548,22 +890,19 @@ const Projects = () => {
                             setShowAddTaskModal(true);
                           }}
                           size="small"
-                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                          sx={{ border: "1px solid", borderColor: "divider" }}
                         >
                           <AddTask fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Add Members">
+                      <Tooltip title="Delete Project">
                         <IconButton
-                          color="success"
-                          onClick={() => {
-                            setSelectedProject(proj);
-                            setShowAddMemberModal(true);
-                          }}
+                          color="error"
+                          onClick={() => handleDeleteProject(proj.id)}
                           size="small"
-                          sx={{ border: '1px solid', borderColor: 'divider' }}
+                          sx={{ border: "1px solid", borderColor: "divider" }}
                         >
-                          <PersonAdd fontSize="small" />
+                          <Delete fontSize="small" />
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -574,6 +913,10 @@ const Projects = () => {
           })}
         </Grid>
       )}
+
+      {/* Modals for Create/Edit Project, Add/Edit Task, Add Members, and View Details */}
+
+
 
       {/* Create Project Modal */}
       <Dialog
@@ -997,22 +1340,6 @@ const Projects = () => {
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
-                      select
-                      label="Assign to Team (Optional)"
-                      value={taskForm.teamId}
-                      onChange={(e) => setTaskForm({ ...taskForm, teamId: e.target.value })}
-                    >
-                      <MenuItem value="">No Team</MenuItem>
-                      {selectedProject.teams?.map(team => (
-                        <MenuItem key={team.id} value={team.id}>
-                          {team.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
                       type="date"
                       label="Deadline"
                       value={taskForm.deadline}
@@ -1067,6 +1394,147 @@ const Projects = () => {
               startIcon={<AddTask />}
             >
               Add Task
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Edit Task Modal */}
+      <Dialog
+        open={showEditTaskModal}
+        onClose={() => {
+          setShowEditTaskModal(false);
+          setSelectedTask(null);
+          setTaskForm({
+            name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+          });
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <form onSubmit={handleUpdateTask}>
+          <DialogTitle>
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" fontWeight="600">
+                Edit Task
+              </Typography>
+              <IconButton onClick={() => {
+                setShowEditTaskModal(false);
+                setSelectedTask(null);
+                setTaskForm({
+                  name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+                });
+              }}>
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <Divider />
+          <DialogContent>
+            {selectedProject && selectedTask && (
+              <>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Editing task in: <strong>{selectedProject.name}</strong>
+                </Alert>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Task Name"
+                      value={taskForm.name}
+                      onChange={(e) => setTaskForm({ ...taskForm, name: e.target.value })}
+                      required
+                      placeholder="Enter task name"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Description"
+                      value={taskForm.description}
+                      onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })}
+                      required
+                      placeholder="Describe the task"
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Assign To"
+                      value={taskForm.assignedTo}
+                      onChange={(e) => setTaskForm({ ...taskForm, assignedTo: e.target.value })}
+                      required
+                    >
+                      <MenuItem value="">Select Member</MenuItem>
+                      {getAssignableMembers().map(member => (
+                        <MenuItem key={member.id} value={member.id}>
+                          {member.name} - {member.designation}
+                          {member.id === parseInt(selectedProject.managerId) && ' (Manager)'}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="date"
+                      label="Deadline"
+                      value={taskForm.deadline}
+                      onChange={(e) => setTaskForm({ ...taskForm, deadline: e.target.value })}
+                      required
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Estimated Hours"
+                      value={taskForm.estimatedHours}
+                      onChange={(e) => setTaskForm({ ...taskForm, estimatedHours: e.target.value })}
+                      required
+                      placeholder="Enter hours"
+                      inputProps={{ min: 1 }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="Status"
+                      value={taskForm.status}
+                      onChange={(e) => setTaskForm({ ...taskForm, status: e.target.value })}
+                      required
+                    >
+                      <MenuItem value="To Do">To Do</MenuItem>
+                      <MenuItem value="In Progress">In Progress</MenuItem>
+                      <MenuItem value="Done">Done</MenuItem>
+                    </TextField>
+                  </Grid>
+                </Grid>
+              </>
+            )}
+          </DialogContent>
+          <Divider />
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => {
+              setShowEditTaskModal(false);
+              setSelectedTask(null);
+              setTaskForm({
+                name: '', description: '', assignedTo: '', teamId: '', deadline: '', estimatedHours: '', status: 'To Do'
+              });
+            }}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={<Edit />}
+            >
+              Update Task
             </Button>
           </DialogActions>
         </form>
@@ -1175,7 +1643,7 @@ const Projects = () => {
         </form>
       </Dialog>
 
-      {/* View Project Details Modal - Part 1 */}
+      {/* View Project Details Modal */}
       <Dialog
         open={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
@@ -1238,7 +1706,6 @@ const Projects = () => {
               <Tabs value={detailsTab} onChange={(e, newValue) => setDetailsTab(newValue)}>
                 <Tab label="Overview" />
                 <Tab label={`Team (${(getTeamMembers(selectedProject).length || 0) + 1})`} />
-                <Tab label={`Teams (${selectedProject.teams?.length || 0})`} />
                 <Tab label={`Tasks (${selectedProject.tasks?.length || 0})`} />
               </Tabs>
             </Box>
@@ -1256,15 +1723,9 @@ const Projects = () => {
                         {selectedProject.description}
                       </Typography>
                       <Stack spacing={1}>
-                        <Typography variant="body2">
-                          <strong>Start Date:</strong> {selectedProject.startDate}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>End Date:</strong> {selectedProject.endDate}
-                        </Typography>
-                        <Typography variant="body2">
-                          <strong>Manager:</strong> {getProjectManager(selectedProject)?.name || 'N/A'}
-                        </Typography>
+                        <Typography variant="body2"><strong>Start Date:</strong> {selectedProject.startDate}</Typography>
+                        <Typography variant="body2"><strong>End Date:</strong> {selectedProject.endDate}</Typography>
+                        <Typography variant="body2"><strong>Manager:</strong> {getProjectManager(selectedProject)?.name || 'Not Assigned'}</Typography>
                         <Typography variant="body2">
                           <strong>Timeline Status:</strong>{' '}
                           <Chip
@@ -1355,7 +1816,6 @@ const Projects = () => {
                     </Button>
                   </Box>
                   <List>
-                    {/* Manager */}
                     {getProjectManager(selectedProject) && (
                       <>
                         <ListItem>
@@ -1377,7 +1837,6 @@ const Projects = () => {
                         <Divider />
                       </>
                     )}
-                    {/* Team Members */}
                     {getTeamMembers(selectedProject).map(emp => (
                       <React.Fragment key={emp.id}>
                         <ListItem>
@@ -1398,62 +1857,8 @@ const Projects = () => {
                 </Box>
               )}
 
-              {/* Teams Created Tab */}
-              {detailsTab === 2 && (
-                <Box>
-                  <Typography variant="h6" fontWeight="600" gutterBottom>
-                    Teams Created by Manager
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  {(!selectedProject.teams || selectedProject.teams.length === 0) ? (
-                    <Alert severity="info">
-                      No teams created yet. Manager can create teams for this project.
-                    </Alert>
-                  ) : (
-                    <Grid container spacing={2}>
-                      {selectedProject.teams.map(team => (
-                        <Grid item xs={12} sm={6} md={4} key={team.id}>
-                          <Card variant="outlined">
-                            <CardContent>
-                              <Typography variant="h6" fontWeight="600" gutterBottom>
-                                {team.name}
-                              </Typography>
-                              <Divider sx={{ my: 1 }} />
-                              <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                                Created: {team.createdAt}
-                              </Typography>
-                              <Typography variant="body2" fontWeight="600" gutterBottom>
-                                Members ({team.members?.length || 0}):
-                              </Typography>
-                              <List dense>
-                                {team.members?.map(memberId => {
-                                  const member = employees.find(e => e.id === memberId);
-                                  return member ? (
-                                    <ListItem key={memberId} sx={{ px: 0 }}>
-                                      <ListItemAvatar>
-                                        <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                                          {member.name.charAt(0)}
-                                        </Avatar>
-                                      </ListItemAvatar>
-                                      <ListItemText
-                                        primary={<Typography variant="body2">{member.name}</Typography>}
-                                        secondary={<Typography variant="caption">{member.designation}</Typography>}
-                                      />
-                                    </ListItem>
-                                  ) : null;
-                                })}
-                              </List>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      ))}
-                    </Grid>
-                  )}
-                </Box>
-              )}
-
               {/* Tasks Tab */}
-              {detailsTab === 3 && (
+              {detailsTab === 2 && (
                 <Box>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                     <Typography variant="h6" fontWeight="600">
@@ -1504,20 +1909,19 @@ const Projects = () => {
                             <TableRow sx={{ bgcolor: 'grey.50' }}>
                               <TableCell><strong>Task Name</strong></TableCell>
                               <TableCell><strong>Assigned To</strong></TableCell>
-                              <TableCell><strong>Team</strong></TableCell>
                               <TableCell><strong>Deadline</strong></TableCell>
                               <TableCell><strong>Hours</strong></TableCell>
                               <TableCell><strong>Status</strong></TableCell>
+                              <TableCell align="center"><strong>Actions</strong></TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {selectedProject.tasks.map(task => {
                               const assignedEmployee = employees.find(e => e.id === task.assignedTo);
-                              const team = selectedProject.teams?.find(t => t.id === task.teamId);
                               const taskDeadline = new Date(task.deadline);
                               const today = new Date();
                               const isOverdue = today > taskDeadline && task.status !== 'Done';
-                              
+
                               return (
                                 <TableRow key={task.id}>
                                   <TableCell>
@@ -1541,15 +1945,6 @@ const Projects = () => {
                                     ) : 'N/A'}
                                   </TableCell>
                                   <TableCell>
-                                    {team ? (
-                                      <Chip label={team.name} size="small" variant="outlined" />
-                                    ) : (
-                                      <Typography variant="caption" color="text.secondary">
-                                        No Team
-                                      </Typography>
-                                    )}
-                                  </TableCell>
-                                  <TableCell>
                                     <Typography variant="body2" color={isOverdue ? 'error.main' : 'text.primary'}>
                                       {task.deadline}
                                     </Typography>
@@ -1564,10 +1959,32 @@ const Projects = () => {
                                       size="small"
                                       color={
                                         task.status === 'Done' ? 'success' :
-                                        task.status === 'In Progress' ? 'info' : 'default'
+                                          task.status === 'In Progress' ? 'info' : 'default'
                                       }
                                       icon={task.status === 'Done' ? <CheckCircle /> : undefined}
                                     />
+                                  </TableCell>
+                                  <TableCell align="center">
+                                    <Stack direction="row" spacing={1} justifyContent="center">
+                                      <Tooltip title="Edit Task">
+                                        <IconButton
+                                          color="primary"
+                                          size="small"
+                                          onClick={() => handleEditTask(task)}
+                                        >
+                                          <Edit fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                      <Tooltip title="Delete Task">
+                                        <IconButton
+                                          color="error"
+                                          size="small"
+                                          onClick={() => handleDeleteTask(task.id)}
+                                        >
+                                          <Delete fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Stack>
                                   </TableCell>
                                 </TableRow>
                               );

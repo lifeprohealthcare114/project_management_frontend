@@ -30,7 +30,8 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  LinearProgress
 } from '@mui/material';
 import {
   FolderOpen,
@@ -44,8 +45,9 @@ import {
   CheckCircle,
   AccessTime,
   Warning,
+  TrendingUp
 } from '@mui/icons-material';
-import { getProjectsByEmployee, updateProject } from '../../../api/api';
+import { getProjectsByEmployee, updateProject, updateTask, getTasksByProject, getTeamsByProject } from '../../../api/api';
 
 const EmployeeProjects = () => {
   const employeeId = parseInt(localStorage.getItem('userId'));
@@ -56,6 +58,7 @@ const EmployeeProjects = () => {
   const [modalTab, setModalTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -66,7 +69,46 @@ const EmployeeProjects = () => {
     setError('');
     try {
       const res = await getProjectsByEmployee(employeeId);
-      setProjects(res.data || []);
+      const projectsData = res.data || [];
+      
+      // Enrich projects with tasks and teams data
+      const enrichedProjects = await Promise.all(
+        projectsData.map(async (project) => {
+          try {
+            // Fetch tasks for this project
+            const tasksRes = await getTasksByProject(project.id);
+            const tasks = tasksRes.data || [];
+            
+            // Fetch teams for this project
+            const teamsRes = await getTeamsByProject(project.id);
+            const teams = teamsRes.data || [];
+            
+            // Calculate progress
+            const myTasks = tasks.filter(task => task.assignedTo === employeeId);
+            const completedTasks = myTasks.filter(t => t.status === 'Done').length;
+            const progress = myTasks.length > 0 ? (completedTasks / myTasks.length) * 100 : 0;
+            
+            return {
+              ...project,
+              tasks: tasks,
+              teams: teams,
+              myTasks: myTasks,
+              progress: Math.round(progress)
+            };
+          } catch (err) {
+            console.error(`Error fetching data for project ${project.id}:`, err);
+            return {
+              ...project,
+              tasks: [],
+              teams: [],
+              myTasks: [],
+              progress: 0
+            };
+          }
+        })
+      );
+      
+      setProjects(enrichedProjects);
     } catch (err) {
       console.error('Error fetching projects:', err);
       setError('Failed to load projects. Please try again.');
@@ -78,8 +120,11 @@ const EmployeeProjects = () => {
   const updateProjectData = async (projectId, updatedProject) => {
     try {
       const res = await updateProject(projectId, updatedProject);
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? res.data : p)));
-      if (selectedProject?.id === projectId) setSelectedProject(res.data);
+      await fetchProjects(); // Refresh all data
+      if (selectedProject?.id === projectId) {
+        const updated = projects.find(p => p.id === projectId);
+        setSelectedProject(updated);
+      }
     } catch (err) {
       console.error('Error updating project:', err);
       setError('Failed to update project.');
@@ -104,23 +149,44 @@ const EmployeeProjects = () => {
     return { label: 'Near Deadline', color: 'warning', icon: <Warning /> };
   };
 
-  const handleMarkTaskComplete = (projectId, taskId) => {
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return;
-    const updatedTasks = project.tasks.map((task) =>
-      task.id === taskId ? { ...task, status: 'Done' } : task
-    );
-    const updatedProject = { ...project, tasks: updatedTasks };
-    updateProjectData(projectId, updatedProject);
+  const handleMarkTaskComplete = async (projectId, taskId) => {
+    setUpdating(true);
+    try {
+      const project = projects.find((p) => p.id === projectId);
+      if (!project) return;
+      
+      const task = project.tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      // Update task status via API
+      const updatedTaskData = { ...task, status: 'Done' };
+      await updateTask(taskId, updatedTaskData);
+      
+      // Refresh projects to get updated data
+      await fetchProjects();
+      
+      // Update selected project if modal is open
+      if (selectedProject?.id === projectId) {
+        const updatedProject = projects.find(p => p.id === projectId);
+        setSelectedProject(updatedProject);
+      }
+      
+      setError('');
+    } catch (err) {
+      console.error('Error updating task:', err);
+      setError('Failed to mark task as complete. Please try again.');
+    } finally {
+      setUpdating(false);
+    }
   };
 
-  const viewProjectDetails = (project) => {
+  const viewProjectDetails = async (project) => {
     setSelectedProject(project);
     setShowModal(true);
     setModalTab(0);
   };
 
-  const getMyTasks = (project) => project.tasks?.filter((task) => task.assignedTo === employeeId) || [];
+  const getMyTasks = (project) => project.myTasks || project.tasks?.filter((task) => task.assignedTo === employeeId) || [];
   const getMyTeams = (project) => project.teams?.filter((team) => team.members?.includes(employeeId)) || [];
   const getProjectManager = (project) => project.manager || null;
 
@@ -133,6 +199,13 @@ const EmployeeProjects = () => {
       case 'Done': return 'success';
       default: return 'default';
     }
+  };
+
+  const getProgressColor = (progress) => {
+    if (progress >= 80) return 'success';
+    if (progress >= 50) return 'info';
+    if (progress >= 30) return 'warning';
+    return 'error';
   };
 
   if (loading) {
@@ -179,6 +252,7 @@ const EmployeeProjects = () => {
             const timelineStatus = getTimelineStatus(proj.startDate, proj.endDate, proj.status);
             const completedTasks = myTasks.filter((t) => t.status === 'Done').length;
             const totalTasks = myTasks.length;
+            const progress = proj.progress || (totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);
 
             return (
               <Grid item xs={12} md={6} lg={4} key={proj.id}>
@@ -214,6 +288,31 @@ const EmployeeProjects = () => {
                       {proj.description}
                     </Typography>
 
+                    {/* Progress Bar */}
+                    <Box mb={2}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                        <Typography variant="caption" color="text.secondary" display="flex" alignItems="center" gap={0.5}>
+                          <TrendingUp sx={{ fontSize: 14 }} />
+                          My Progress
+                        </Typography>
+                        <Typography variant="caption" fontWeight="600" color={getProgressColor(progress)}>
+                          {progress}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={progress} 
+                        sx={{ 
+                          height: 8, 
+                          borderRadius: 1,
+                          bgcolor: 'grey.200',
+                          '& .MuiLinearProgress-bar': {
+                            bgcolor: progress >= 80 ? 'success.main' : progress >= 50 ? 'info.main' : progress >= 30 ? 'warning.main' : 'error.main'
+                          }
+                        }} 
+                      />
+                    </Box>
+
                     <Divider sx={{ my: 2 }} />
 
                     <Stack spacing={1.5}>
@@ -241,7 +340,7 @@ const EmployeeProjects = () => {
                       <Box display="flex" alignItems="center" gap={1}>
                         <Assignment sx={{ fontSize: 18, color: 'text.secondary' }} />
                         <Typography variant="body2" color="text.secondary">
-                          My Tasks: <strong>{completedTasks}/{totalTasks}</strong>{totalTasks > 0 && ` (${Math.round((completedTasks / totalTasks) * 100)}%)`}
+                          My Tasks: <strong>{completedTasks}/{totalTasks}</strong>
                         </Typography>
                       </Box>
 
@@ -278,6 +377,12 @@ const EmployeeProjects = () => {
                       size="small"
                       color={getTimelineStatus(selectedProject.startDate, selectedProject.endDate, selectedProject.status).color}
                     />
+                    <Chip 
+                      icon={<TrendingUp />}
+                      label={`${selectedProject.progress || 0}% Complete`}
+                      size="small"
+                      color={getProgressColor(selectedProject.progress || 0)}
+                    />
                   </Stack>
                 </Box>
                 <IconButton onClick={() => setShowModal(false)}><Close /></IconButton>
@@ -297,6 +402,35 @@ const EmployeeProjects = () => {
                 <Box>
                   <Typography variant="subtitle1" fontWeight="600" gutterBottom>Project Information</Typography>
                   <Divider sx={{ mb: 2 }} />
+                  
+                  {/* Progress Overview */}
+                  <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                    <Typography variant="subtitle2" fontWeight="600" mb={1}>My Progress Overview</Typography>
+                    <Box display="flex" alignItems="center" gap={2} mb={1}>
+                      <Box flex={1}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={selectedProject.progress || 0} 
+                          sx={{ 
+                            height: 10, 
+                            borderRadius: 1,
+                            '& .MuiLinearProgress-bar': {
+                              bgcolor: getProgressColor(selectedProject.progress || 0) === 'success' ? 'success.main' : 
+                                       getProgressColor(selectedProject.progress || 0) === 'info' ? 'info.main' : 
+                                       getProgressColor(selectedProject.progress || 0) === 'warning' ? 'warning.main' : 'error.main'
+                            }
+                          }} 
+                        />
+                      </Box>
+                      <Typography variant="h6" fontWeight="700" color={getProgressColor(selectedProject.progress || 0)}>
+                        {selectedProject.progress || 0}%
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      {getMyTasks(selectedProject).filter(t => t.status === 'Done').length} of {getMyTasks(selectedProject).length} tasks completed
+                    </Typography>
+                  </Paper>
+
                   <Typography variant="body2" color="text.secondary" paragraph>
                     {selectedProject.description}
                   </Typography>
@@ -388,8 +522,9 @@ const EmployeeProjects = () => {
                                       size="small" 
                                       color="success"
                                       onClick={() => handleMarkTaskComplete(selectedProject.id, task.id)}
+                                      disabled={updating}
                                     >
-                                      Mark Done
+                                      {updating ? <CircularProgress size={20} /> : 'Mark Done'}
                                     </Button>
                                   )}
                                 </TableCell>

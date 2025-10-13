@@ -1,5 +1,4 @@
-// FILE 1: api.js (UPDATED)
-// Path: src/api/api.js
+// FILE: src/api/api.js
 // =====================================================
 
 import axios from "axios";
@@ -10,7 +9,7 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// Add JWT token to every request if exists
+// ===================== INTERCEPTORS =====================
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -20,7 +19,6 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Optional: auto logout if unauthorized
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -35,24 +33,32 @@ api.interceptors.response.use(
   }
 );
 
-// ===================== AUTH API =====================
+// =====================================================
+// ===================== AUTH API ======================
+// =====================================================
 export const login = (empId, password) => api.post("/auth/login", { empId, password });
 export const signup = (employee) => api.post("/auth/signup", employee);
 export const forgotPassword = (empId) => api.post("/auth/forgot-password", { empId });
 export const resetPassword = (token, newPassword) => api.post("/auth/reset-password", { token, newPassword });
 
-// ===================== DASHBOARD API =====================
+// =====================================================
+// ===================== DASHBOARD API =================
+// =====================================================
 export const getDashboardData = (userId, role) =>
   api.get("/dashboard", { params: { userId, role } });
 
-// ===================== EMPLOYEES API =====================
+// =====================================================
+// ===================== EMPLOYEES API =================
+// =====================================================
 export const getEmployees = () => api.get("/employees");
 export const getEmployeeById = (id) => api.get(`/employees/${id}`);
 export const createEmployee = (employee) => api.post("/employees", employee);
 export const updateEmployee = (id, employee) => api.put(`/employees/${id}`, employee);
 export const deleteEmployee = (id) => api.delete(`/employees/${id}`);
 
-// ===================== PROJECTS API =====================
+// =====================================================
+// ===================== PROJECTS API ==================
+// =====================================================
 export const getProjects = () => api.get("/projects");
 export const getProjectById = (id) => api.get(`/projects/${id}`);
 export const createProject = (project) => api.post("/projects", project);
@@ -67,7 +73,9 @@ export const getProjectsByManager = (managerId) =>
 export const getProjectsByEmployee = (employeeId) =>
   api.get(`/projects/employee/${employeeId}`);
 
-// ===================== REQUESTS API =====================
+// =====================================================
+// ===================== REQUESTS API ==================
+// =====================================================
 export const getRequests = () => api.get("/requests");
 export const getRequestById = (id) => api.get(`/requests/${id}`);
 export const createRequest = (requestDto) => api.post("/requests", requestDto);
@@ -85,4 +93,56 @@ export const getRequestsByManager = (managerId) =>
 export const updateRequestStatus = (id, status, respondedBy) =>
   api.patch(`/requests/${id}/status`, { status, respondedBy });
 
+// =====================================================
+// ===================== TASKS API =====================
+// =====================================================
+
+// ✅ Get all tasks
+export const getTasks = () => api.get("/tasks");
+
+// ✅ Get task by ID
+export const getTaskById = (id) => api.get(`/tasks/${id}`);
+
+// ✅ Get tasks by project (aligned with backend /api/tasks/project/{projectId})
+export const getTasksByProject = (projectId) => api.get(`/tasks/project/${projectId}`);
+
+// ✅ Create a new task
+export const createTask = (task) => api.post("/tasks", task);
+
+// ✅ Update a task
+export const updateTask = (id, task) => api.put(`/tasks/${id}`, task);
+
+// ✅ Delete a task
+export const deleteTask = (id) => api.delete(`/tasks/${id}`);
+
+// ✅ Assign a task to an employee
+export const assignTaskToEmployee = (taskId, employeeId) =>
+  api.put(`/tasks/${taskId}/assign`, { employeeId });
+
+// ✅ Get tasks by employee
+export const getTasksByEmployee = (employeeId) => api.get(`/tasks/employee/${employeeId}`);
+
+// =====================================================
+// ===================== TEAMS API (NEW) ===============
+// =====================================================
+
+// ✅ Get all teams
+export const getTeams = () => api.get("/teams");
+
+// ✅ Get team by ID
+export const getTeamById = (id) => api.get(`/teams/${id}`);
+
+// ✅ Get teams by Project
+export const getTeamsByProject = (projectId) => api.get(`/teams/project/${projectId}`);
+
+// ✅ Create a new team
+export const createTeam = (team) => api.post("/teams", team);
+
+// ✅ Update a team
+export const updateTeam = (id, team) => api.put(`/teams/${id}`, team);
+
+// ✅ Delete a team
+export const deleteTeam = (id) => api.delete(`/teams/${id}`);
+
+// =====================================================
 export default api;
