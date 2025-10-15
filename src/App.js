@@ -14,13 +14,12 @@ import ForgotPassword from './components/ForgotPassword';
 // Import Admin Components
 import AdminDashboard from './components/pages/Admin/Dashboard';
 import AdminEmployees from './components/pages/Admin/Employees';
-import AdminProjects from './components/pages/Admin/Project';
+import AdminProjects from './components/pages/Admin/project/Project';
 import AdminRequests from './components/pages/Admin/Request';
 
 // Import Manager Components
 import ManagerDashboard from './components/pages/Manager/Dashboard';
 import ManagerProjects from './components/pages/Manager/ManagerProjects';
-import ManagerTeam from './components/pages/Manager/ManagerTeam';
 import ManagerRequests from './components/pages/Manager/ManagerRequests';
 
 // Import Employee Components
@@ -119,17 +118,7 @@ function App() {
               </PrivateRoute>
             }
           />
-          <Route
-            path="/manager-team"
-            element={
-              <PrivateRoute role="manager">
-                <Layout>
-                  <ManagerTeam managerId={userId} projects={projects} employees={employees} />
-                </Layout>
-              </PrivateRoute>
-            }
-          />
-          <Route
+                  <Route
             path="/manager-requests"
             element={
               <PrivateRoute role="manager">

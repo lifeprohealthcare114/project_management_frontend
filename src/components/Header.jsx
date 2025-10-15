@@ -1,86 +1,161 @@
-// Header.jsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, Typography, Button, Box, IconButton, Menu, MenuItem } from '@mui/material';
-import { AccountCircle, ExitToApp } from '@mui/icons-material';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Box,
+  IconButton,
+  Menu,
+  MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import { AccountCircle, ExitToApp, Menu as MenuIcon } from '@mui/icons-material';
 
-const Header = () => {
+const drawerWidth = 240;
+
+const Header = ({ onMenuClick }) => {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = React.useState(null);
-  
+  const [logoutDialogOpen, setLogoutDialogOpen] = React.useState(false);
+
   const userName = localStorage.getItem('name');
   const userRole = localStorage.getItem('role');
 
-  const handleMenu = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const handleClose = () => {
-    setAnchorEl(null);
-  };
+  const handleMenu = (event) => setAnchorEl(event.currentTarget);
+  const handleClose = () => setAnchorEl(null);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    localStorage.removeItem('userId');
-    localStorage.removeItem('name');
+    localStorage.clear();
     navigate('/');
   };
 
+  const openLogoutDialog = () => {
+    setLogoutDialogOpen(true);
+  };
+
+  const closeLogoutDialog = () => {
+    setLogoutDialogOpen(false);
+  };
+
   return (
-    <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-      <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          Project Management System
-        </Typography>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="body1">
-            {userName} ({userRole})
-          </Typography>
-          
-          <IconButton
-            size="large"
-            aria-label="account of current user"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
-            onClick={handleMenu}
-            color="inherit"
-          >
-            <AccountCircle />
-          </IconButton>
-          
-          <Menu
-            id="menu-appbar"
-            anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
+    <>
+      <AppBar
+        position="fixed"
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          backgroundColor: 'primary.main',
+          ml: { md: `${drawerWidth}px` },
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+        }}
+      >
+        <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {isMobile && (
+              <IconButton
+                color="inherit"
+                edge="start"
+                onClick={onMenuClick}
+                sx={{ mr: 1 }}
+              >
+                <MenuIcon />
+              </IconButton>
+            )}
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 600,
+                fontSize: { xs: '1rem', sm: '1.1rem', md: '1.25rem' },
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Project Management System
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {!isMobile && (
+              <Typography variant="body1" sx={{ textTransform: 'capitalize' }}>
+                {userName} ({userRole})
+              </Typography>
+            )}
+
+            <IconButton size="large" onClick={handleMenu} color="inherit">
+              <AccountCircle />
+            </IconButton>
+
+            <Menu
+              anchorEl={anchorEl}
+              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+              keepMounted
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              open={Boolean(anchorEl)}
+              onClose={handleClose}
+            >
+              <MenuItem onClick={handleClose}>Profile</MenuItem>
+              <MenuItem
+                onClick={() => {
+                  handleClose();
+                  openLogoutDialog();
+                }}
+              >
+                <ExitToApp sx={{ mr: 1 }} /> Logout
+              </MenuItem>
+            </Menu>
+
+            {!isMobile && (
+              <Button
+                color="inherit"
+                onClick={openLogoutDialog}
+                startIcon={<ExitToApp />}
+              >
+                Logout
+              </Button>
+            )}
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      {/* Logout Confirmation Dialog */}
+      <Dialog
+        open={logoutDialogOpen}
+        onClose={closeLogoutDialog}
+        aria-labelledby="logout-dialog-title"
+        aria-describedby="logout-dialog-description"
+      >
+        <DialogTitle id="logout-dialog-title">Confirm Logout</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="logout-dialog-description">
+            Are you sure you want to logout?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeLogoutDialog} color="primary">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              closeLogoutDialog();
+              handleLogout();
             }}
-            keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            open={Boolean(anchorEl)}
-            onClose={handleClose}
-          >
-            <MenuItem onClick={handleClose}>Profile</MenuItem>
-            <MenuItem onClick={handleLogout}>
-              <ExitToApp sx={{ mr: 1 }} /> Logout
-            </MenuItem>
-          </Menu>
-          
-          <Button 
-            color="inherit" 
-            onClick={handleLogout}
-            startIcon={<ExitToApp />}
+            color="primary"
+            autoFocus
           >
             Logout
           </Button>
-        </Box>
-      </Toolbar>
-    </AppBar>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };
 

@@ -16,7 +16,8 @@ import {
   ListItemAvatar,
   ListItemText,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Button
 } from '@mui/material';
 import {
   People,
@@ -27,7 +28,7 @@ import {
   Folder,
   CheckCircle
 } from '@mui/icons-material';
-
+import { useNavigate } from 'react-router-dom';
 import { getDashboardData } from '../../../api/api';
 
 const Dashboard = () => {
@@ -39,6 +40,7 @@ const Dashboard = () => {
 
   const userId = parseInt(localStorage.getItem('userId'));
   const role = localStorage.getItem('role') || 'admin';
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchData();
@@ -48,7 +50,6 @@ const Dashboard = () => {
     setLoading(true);
     setError(null);
     try {
-      // For admin, fetch all data without userId filter
       const response = await getDashboardData();
       setEmployees(response.data.employees || []);
       setProjects(response.data.projects || []);
@@ -180,11 +181,16 @@ const Dashboard = () => {
               height: '100%'
             }}
           >
-            <Box display="flex" alignItems="center" mb={2}>
-              <Person color="primary" sx={{ mr: 1 }} />
-              <Typography variant="h6" fontWeight="600">
-                Recent Employees
-              </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box display="flex" alignItems="center">
+                <Person color="primary" sx={{ mr: 1 }} />
+                <Typography variant="h6" fontWeight="600">
+                  Recent Employees
+                </Typography>
+              </Box>
+              <Button size="small" onClick={() => navigate('/admin-employees')}>
+                View All
+              </Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
             {employees.length === 0 ? (
@@ -243,11 +249,16 @@ const Dashboard = () => {
               height: '100%'
             }}
           >
-            <Box display="flex" alignItems="center" mb={2}>
-              <Folder color="success" sx={{ mr: 1 }} />
-              <Typography variant="h6" fontWeight="600">
-                Recent Projects
-              </Typography>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Box display="flex" alignItems="center">
+                <Folder color="success" sx={{ mr: 1 }} />
+                <Typography variant="h6" fontWeight="600">
+                  Recent Projects
+                </Typography>
+              </Box>
+              <Button size="small" onClick={() => navigate('/admin-projects')}>
+                View All
+              </Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
             {projects.length === 0 ? (
