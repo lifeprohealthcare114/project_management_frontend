@@ -88,8 +88,8 @@ const Requests = () => {
 
     try {
       const newRequest = {
-        employee: { id: managerId },
-        project: { id: parseInt(requestForm.projectId) },
+        employeeId: managerId,
+        projectId: parseInt(requestForm.projectId),
         equipment: requestForm.equipment,
         quantity: parseInt(requestForm.quantity),
         reason: requestForm.reason
@@ -113,7 +113,13 @@ const Requests = () => {
     try {
       await updateRequestStatus(requestId, newStatus, managerId);
       setRequests(requests.map(req =>
-        req.id === requestId ? { ...req, status: newStatus, respondedAt: new Date().toLocaleDateString(), respondedBy: managerId } : req
+        req.id === requestId ? {
+          ...req,
+          status: newStatus,
+          respondedAt: new Date().toLocaleDateString(),
+          respondedBy: managerId,
+          responderName: 'You'
+        } : req
       ));
       setSuccess(`Request ${newStatus.toLowerCase()} successfully!`);
       setTimeout(() => setSuccess(''), 3000);
@@ -171,9 +177,9 @@ const Requests = () => {
         ? requests.filter(r => r.status === 'Approved')
         : requests.filter(r => r.status === 'Rejected');
 
-  // Separate requests by requester
-  const myRequests = filteredRequests.filter(r => r.employee?.id === managerId);
-  const teamRequests = filteredRequests.filter(r => r.employee?.id !== managerId);
+  // Use employeeId from DTO instead of nested object
+  const myRequests = filteredRequests.filter(r => r.employeeId === managerId);
+  const teamRequests = filteredRequests.filter(r => r.employeeId !== managerId);
 
   if (loading) {
     return (
@@ -208,14 +214,7 @@ const Requests = () => {
       <Grid container spacing={3} mb={4}>
         {stats.map((stat, index) => (
           <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card
-              elevation={0}
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2
-              }}
-            >
+            <Card elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
               <CardContent>
                 <Box display="flex" justifyContent="space-between" alignItems="center">
                   <Box>
@@ -271,16 +270,7 @@ const Requests = () => {
       </Grid>
 
       {/* Create Request Form */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          mb: 3,
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 2
-        }}
-      >
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
         <Typography variant="h6" fontWeight="600" gutterBottom>
           Create New Request
         </Typography>
@@ -361,14 +351,7 @@ const Requests = () => {
       </Paper>
 
       {/* Requests List */}
-      <Paper
-        elevation={0}
-        sx={{
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 2
-        }}
-      >
+      <Paper elevation={0} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
         <Box p={3} pb={0}>
           <Typography variant="h6" fontWeight="600" gutterBottom>
             All Project Requests
@@ -413,12 +396,13 @@ const Requests = () => {
                   <TableCell><strong>Qty</strong></TableCell>
                   <TableCell><strong>Reason</strong></TableCell>
                   <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Approved By</strong></TableCell>
                   <TableCell align="center"><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredRequests.map(req => {
-                  const isMyRequest = req.employee?.id === managerId;
+                  const isMyRequest = req.employeeId === managerId;
 
                   return (
                     <TableRow
@@ -429,37 +413,42 @@ const Requests = () => {
                         bgcolor: isMyRequest ? 'primary.50' : 'inherit'
                       }}
                     >
-                      <TableCell>{req.requestDate}</TableCell>
-                      <TableCell>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <Avatar sx={{ width: 32, height: 32, bgcolor: isMyRequest ? 'success.main' : 'primary.main' }}>
-                            {req.employee?.name?.charAt(0) || 'E'}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight="600">
-                              {req.employee?.name || 'Unknown'} {isMyRequest && '(You)'}
-                            </Typography>
-                            <Chip
-                              label={req.employee?.role || 'N/A'}
-                              size="small"
-                              color={req.employee?.role === 'manager' ? 'warning' : 'info'}
-                              variant="outlined"
-                            />
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box>
-                          <Typography variant="body2" fontWeight="600">
-                            {req.project?.name || 'Unknown'}
-                          </Typography>
-                          <Chip
-                            label={req.project?.status || 'N/A'}
-                            size="small"
-                            variant="outlined"
-                          />
-                        </Box>
-                      </TableCell>
+                <TableCell>{req.requestDate}</TableCell>
+<TableCell>
+  <Box display="flex" alignItems="center" gap={1}>
+    <Avatar sx={{ width: 32, height: 32, bgcolor: isMyRequest ? 'success.main' : 'primary.main' }}>
+      {req.employeeName?.charAt(0).toUpperCase() || 'E'}
+    </Avatar>
+    <Box>
+      <Typography variant="body2" fontWeight="600">
+        {req.employeeName || '—'} {isMyRequest && '(You)'}
+      </Typography>
+      {req.employeeRole && (
+        <Chip
+          label={req.employeeRole}
+          size="small"
+          color={req.employeeRole === 'manager' ? 'warning' : 'info'}
+          variant="outlined"
+        />
+      )}
+    </Box>
+  </Box>
+</TableCell>
+<TableCell>
+  <Box>
+    <Typography variant="body2" fontWeight="600">
+      {req.projectName || req.name || '—'}
+    </Typography>
+    {req.status && (
+      <Chip
+        label={req.status}
+        size="small"
+        variant="outlined"
+      />
+    )}
+  </Box>
+</TableCell>
+
                       <TableCell>
                         <Typography variant="body2" fontWeight="600">
                           {req.equipment}
@@ -495,6 +484,9 @@ const Requests = () => {
                           </Typography>
                         )}
                       </TableCell>
+                      <TableCell>
+                        {req.responderName || '-'}
+                      </TableCell>
                       <TableCell align="center">
                         {req.status === 'Pending' && !isMyRequest ? (
                           <Stack direction="row" spacing={1} justifyContent="center">
@@ -502,10 +494,7 @@ const Requests = () => {
                               size="small"
                               color="success"
                               onClick={() => handleRequestStatusUpdate(req.id, 'Approved')}
-                              sx={{
-                                border: '1px solid',
-                                borderColor: 'success.main'
-                              }}
+                              sx={{ border: '1px solid', borderColor: 'success.main' }}
                             >
                               <ThumbUp fontSize="small" />
                             </IconButton>
@@ -513,10 +502,7 @@ const Requests = () => {
                               size="small"
                               color="error"
                               onClick={() => handleRequestStatusUpdate(req.id, 'Rejected')}
-                              sx={{
-                                border: '1px solid',
-                                borderColor: 'error.main'
-                              }}
+                              sx={{ border: '1px solid', borderColor: 'error.main' }}
                             >
                               <ThumbDown fontSize="small" />
                             </IconButton>

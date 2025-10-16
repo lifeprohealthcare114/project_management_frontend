@@ -61,6 +61,7 @@ import {
 import isBetween from 'dayjs/plugin/isBetween'; // ✅ Import plugin
 
 dayjs.extend(isBetween);
+
 const Requests = () => {
   const [requests, setRequests] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -85,6 +86,10 @@ const Requests = () => {
     fetchProjects();
     const ws = new WebSocket('ws://localhost:8080/ws/requests');
     ws.onmessage = () => fetchRequests();
+    ws.onerror = () => {
+      // optional: handle ws errors gracefully
+      // console.warn('WebSocket error for requests');
+    };
     return () => ws.close();
   }, []);
 
@@ -180,17 +185,35 @@ const Requests = () => {
 
   const tabStatus = ['All', 'Pending', 'Approved', 'Rejected'][tabValue];
 
+  // Keep monthYearCounts logic from original file
+  const monthYearCounts = useMemo(() => {
+    if (!monthYear) return null;
+    const monthStart = dayjs(monthYear).startOf('month');
+    const monthEnd = dayjs(monthYear).endOf('month');
+    const monthlyRequests = requests.filter((req) => {
+      const date = req.requestDate || req.createdAt;
+      return dayjs(date).isBetween(monthStart, monthEnd, null, '[]');
+    });
+    return {
+      total: monthlyRequests.length,
+      pending: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'pending').length,
+      approved: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'approved').length,
+      rejected: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'rejected').length,
+    };
+  }, [requests, monthYear]);
+
   const filteredRequests = useMemo(() => {
     return requests.filter((req) => {
-      const empName = req.employee?.name?.toLowerCase() || '';
-      const projName = req.project?.name?.toLowerCase() || '';
-      const equipment = req.equipment?.toLowerCase() || '';
-      const reason = req.reason?.toLowerCase() || '';
+      // Support both nested objects and flat backend fields
+      const empName = (req.employee?.name) ? req.employee.name.toLowerCase() : (req.employeeName ? String(req.employeeName).toLowerCase() : '');
+      const projName = (req.project?.name) ? req.project.name.toLowerCase() : (req.projectName ? String(req.projectName).toLowerCase() : '');
+      const equipment = req.equipment ? String(req.equipment).toLowerCase() : '';
+      const reason = req.reason ? String(req.reason).toLowerCase() : '';
       const query = searchQuery.toLowerCase();
 
       const date = req.requestDate || req.createdAt;
 
-      // Month-Year filter
+      // Month-Year filter (keeps original behavior)
       let matchesMonthYear = true;
       if (monthYear) {
         const monthStart = dayjs(monthYear).startOf('month');
@@ -208,7 +231,10 @@ const Requests = () => {
         (tabStatus === 'All' || (req.status?.toLowerCase() === tabStatus.toLowerCase())) &&
         (filterStatus === 'All' || (req.status?.toLowerCase() === filterStatus.toLowerCase()));
 
-      const matchesProject = !filterProject || (req.project?.id === parseInt(filterProject));
+      const matchesProject =
+        !filterProject ||
+        (req.project?.id === parseInt(filterProject)) ||
+        (req.projectId === parseInt(filterProject));
 
       const matchesDate =
         (!dateRange.from || dayjs(date).isAfter(dayjs(dateRange.from).subtract(1, 'day'))) &&
@@ -217,23 +243,6 @@ const Requests = () => {
       return matchesQuery && matchesStatus && matchesProject && matchesDate && matchesMonthYear;
     });
   }, [requests, searchQuery, filterStatus, filterProject, dateRange, tabStatus, monthYear]);
-
-  // Counts for monthYear filter
-  const monthYearCounts = useMemo(() => {
-    if (!monthYear) return null;
-    const monthStart = dayjs(monthYear).startOf('month');
-    const monthEnd = dayjs(monthYear).endOf('month');
-    const monthlyRequests = requests.filter((req) => {
-      const date = req.requestDate || req.createdAt;
-      return dayjs(date).isBetween(monthStart, monthEnd, null, '[]');
-    });
-    return {
-      total: monthlyRequests.length,
-      pending: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'pending').length,
-      approved: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'approved').length,
-      rejected: monthlyRequests.filter((r) => r.status?.toLowerCase() === 'rejected').length,
-    };
-  }, [requests, monthYear]);
 
   const counts = useMemo(() => ({
     total: requests.length,
@@ -250,6 +259,7 @@ const Requests = () => {
     setFilterProject('');
     setDateRange({ from: '', to: '' });
     setMonthYear('');
+    setPage(1);
   };
 
   if (loading) {
@@ -277,7 +287,7 @@ const Requests = () => {
         )}
       </Stack>
 
-      {/* Summary Dashboard */}
+      {/* Summary Dashboard (kept original monthYear conditional) */}
       <Box position="sticky" top={0} zIndex={99} bgcolor="background.paper" py={1} mb={2}>
         <Grid container spacing={2} alignItems="center">
           {monthYear && monthYearCounts ? (
@@ -498,7 +508,7 @@ const Requests = () => {
           <Table>
             <TableHead sx={{ bgcolor: 'grey.50' }}>
               <TableRow>
-                {['Requested Date', 'Responded Date', 'Employee', 'Project', 'Equipment', 'Qty', 'Reason', 'Status', 'Actions'].map((head) => (
+                {['Requested Date', 'Responded Date', 'Employee', 'Project', 'Responded By', 'Equipment', 'Qty', 'Reason', 'Status', 'Actions'].map((head) => (
                   <TableCell key={head}><strong>{head}</strong></TableCell>
                 ))}
               </TableRow>
@@ -507,9 +517,28 @@ const Requests = () => {
               {paginatedRequests.map((req) => (
                 <TableRow key={req.id}>
                   <TableCell>{req.requestDate || req.createdAt}</TableCell>
-                  <TableCell>{(req.status?.toLowerCase() === 'approved' || req.status?.toLowerCase() === 'rejected') ? req.respondedAt : '-'}</TableCell>
-                  <TableCell>{req.employee?.name || 'N/A'}</TableCell>
-                  <TableCell>{req.project?.name || 'N/A'}</TableCell>
+                  <TableCell>{(req.status?.toLowerCase() === 'approved' || req.status?.toLowerCase() === 'rejected') ? (req.respondedAt || '-') : '-'}</TableCell>
+
+                  {/* Employee: show name and id (supports both shapes) */}
+                  <TableCell>
+                    {req.employee?.name || req.employeeName || 'N/A'}
+                    {' '}
+
+                  </TableCell>
+
+                  {/* Project: show name and id */}
+                  <TableCell>
+                    {req.project?.name || req.projectName || 'N/A'}
+                    {' '}
+
+                  </TableCell>
+
+                  {/* Responded By (styled) */}
+                  <TableCell>
+                    {req.responderName || req.responder?.name || '-'}
+                    {' '}
+                  </TableCell>
+
                   <TableCell>{req.equipment}</TableCell>
                   <TableCell>{req.quantity}</TableCell>
                   <TableCell>{req.reason || '-'}</TableCell>
@@ -576,10 +605,23 @@ const Requests = () => {
                   <Stack spacing={1}>
                     <Typography><strong>Requested Date:</strong> {req.requestDate || req.createdAt}</Typography>
                     {(req.status?.toLowerCase() === 'approved' || req.status?.toLowerCase() === 'rejected') && (
-                      <Typography><strong>Responded Date:</strong> {req.respondedAt}</Typography>
+                      <Typography><strong>Responded Date:</strong> {req.respondedAt || '-'}</Typography>
                     )}
-                    <Typography><strong>Employee:</strong> {req.employee?.name || 'N/A'}</Typography>
-                    <Typography><strong>Project:</strong> {req.project?.name || 'N/A'}</Typography>
+                    <Typography>
+                      <strong>Employee:</strong> {req.employee?.name || req.employeeName || 'N/A'}
+                      {' '}
+
+                    </Typography>
+                    <Typography>
+                      <strong>Project:</strong> {req.project?.name || req.projectName || 'N/A'}
+                      {' '}
+
+                    </Typography>
+                    <Typography>
+                      <strong>Approved By:</strong> {req.responderName || req.responder?.name || 'N/A'}
+                      {' '}
+
+                    </Typography>
                     <Typography><strong>Equipment:</strong> {req.equipment}</Typography>
                     <Typography><strong>Quantity:</strong> {req.quantity}</Typography>
                     <Typography><strong>Reason:</strong> {req.reason || '-'}</Typography>
@@ -623,15 +665,30 @@ const Requests = () => {
                 {(selectedRequest.status?.toLowerCase() === 'approved' || selectedRequest.status?.toLowerCase() === 'rejected') && (
                   <>
                     <Typography variant="subtitle2" color="text.secondary">Responded Date</Typography>
-                    <Typography variant="body1">{selectedRequest.respondedAt}</Typography>
+                    <Typography variant="body1">{selectedRequest.respondedAt || '-'}</Typography>
                   </>
                 )}
 
                 <Typography variant="subtitle2" color="text.secondary">Employee</Typography>
-                <Typography variant="body1">{selectedRequest.employee?.name || 'N/A'}</Typography>
+                <Typography variant="body1">
+                  {selectedRequest.employee?.name || selectedRequest.employeeName || 'N/A'}
+                  {' '}
+
+                </Typography>
 
                 <Typography variant="subtitle2" color="text.secondary">Project</Typography>
-                <Typography variant="body1">{selectedRequest.project?.name || 'N/A'}</Typography>
+                <Typography variant="body1">
+                  {selectedRequest.project?.name || selectedRequest.projectName || 'N/A'}
+                  {' '}
+
+                </Typography>
+
+                <Typography variant="subtitle2" color="text.secondary">Approved By</Typography>
+                <Typography variant="body1">
+                  {selectedRequest.responderName || selectedRequest.responder?.name || 'N/A'}
+                  {' '}
+                 
+                </Typography>
 
                 <Typography variant="subtitle2" color="text.secondary">Equipment</Typography>
                 <Typography variant="body1">{selectedRequest.equipment}</Typography>
