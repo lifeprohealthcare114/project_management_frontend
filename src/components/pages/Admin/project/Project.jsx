@@ -20,7 +20,7 @@ import {
   createTask,
   updateTask,
   deleteTask,
-} from "../../../../api/api";
+} from "../../../../api/api"; // Make sure deleteMember API is also exported from api.js
 import SearchAndFilters from "./component/SearchAndFilters";
 import ProjectCard from "./component/ProjectCard";
 import CreateProjectModal from "./component/CreateProjectModal";
@@ -72,7 +72,6 @@ const Projects = () => {
   });
 
   const [newMembers, setNewMembers] = useState([]);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [timelineFilter, setTimelineFilter] = useState("All");
@@ -254,6 +253,22 @@ const Projects = () => {
     } catch (e) {
       const msg = e.response?.data?.message || "Failed to add members";
       setError(msg);
+      showSnackbar(msg, "error");
+    }
+  };
+
+  // ✅ DELETE MEMBER HANDLER
+  const handleDeleteMember = async (memberId) => {
+    if (!window.confirm("Are you sure you want to remove this member from the project?")) return;
+    try {
+      const updatedTeam = (selectedProject.teamMembers || []).filter((id) => id !== memberId);
+      const updatedProject = { ...selectedProject, teamMembers: updatedTeam };
+      const res = await updateProject(selectedProject.id, updatedProject);
+      setProjects((prev) => prev.map((p) => (p.id === selectedProject.id ? res.data : p)));
+      setSelectedProject(res.data);
+      showSnackbar("Member removed successfully");
+    } catch (e) {
+      const msg = e.response?.data?.message || "Failed to remove member";
       showSnackbar(msg, "error");
     }
   };
@@ -634,6 +649,7 @@ const Projects = () => {
         setShowAddMemberModal={setShowAddMemberModal}
         handleEditTask={handleEditTask}
         handleDeleteTask={handleDeleteTask}
+        handleDeleteMember={handleDeleteMember} // ✅ Pass delete member handler
         employees={employees}
       />
 

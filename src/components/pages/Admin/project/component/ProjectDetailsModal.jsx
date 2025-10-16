@@ -57,6 +57,7 @@ const ProjectDetailsModal = ({
   setShowAddMemberModal,
   handleEditTask,
   handleDeleteTask,
+  handleDeleteMember, // ✅ Added
   employees,
 }) => {
   if (!selectedProject) return null;
@@ -297,7 +298,27 @@ const ProjectDetailsModal = ({
               )}
               {getTeamMembers(selectedProject).map((emp) => (
                 <React.Fragment key={emp.id}>
-                  <ListItem>
+                  <ListItem
+                    secondaryAction={
+                      <Tooltip title="Remove Member">
+                        <IconButton
+                          edge="end"
+                          color="error"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Are you sure you want to remove ${emp.name}?`
+                              )
+                            ) {
+                              handleDeleteMember(emp.id);
+                            }
+                          }}
+                        >
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    }
+                  >
                     <ListItemAvatar>
                       <Avatar sx={{ bgcolor: "primary.main" }}>
                         {emp.name.charAt(0)}
@@ -417,7 +438,10 @@ const ProjectDetailsModal = ({
                               <Typography variant="body2" fontWeight="600">
                                 {task.name}
                               </Typography>
-                              <Typography variant="caption" color="text.secondary">
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
                                 {task.description}
                               </Typography>
                             </TableCell>
@@ -444,9 +468,7 @@ const ProjectDetailsModal = ({
                             <TableCell>
                               <Typography
                                 variant="body2"
-                                color={
-                                  isOverdue ? "error.main" : "text.primary"
-                                }
+                                color={isOverdue ? "error.main" : "text.primary"}
                               >
                                 {task.deadline}
                               </Typography>
@@ -471,11 +493,7 @@ const ProjectDetailsModal = ({
                                     ? "info"
                                     : "default"
                                 }
-                                icon={
-                                  task.status === "Done" ? (
-                                    <CheckCircle />
-                                  ) : undefined
-                                }
+                                icon={task.status === "Done" ? <CheckCircle /> : undefined}
                               />
                             </TableCell>
                             <TableCell align="center">
